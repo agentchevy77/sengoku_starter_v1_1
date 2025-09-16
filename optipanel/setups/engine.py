@@ -54,11 +54,18 @@ def compute_setups(features: Dict[str, Any]) -> Dict[str, int]:
     else:
         out["bounce_up"] = _clamp_int(20)
 
-    # Rejection down (fail at resistance)
+    # Rejection down (fail at resistance) — soften when bull signals dominate
     if last <= resistance:
         near = max(0.0, _pct_gap_above(last, resistance))
         base = 45 + (15 * (1 - near / 0.01)) if near <= 0.01 else 30
-        malus = (10 if last < dma20 else 0) + (10 if rs <= 0.0 else 0) + (5 if rvol >= 1.0 else 0)
+        malus = 0
+        if last < dma20:
+            malus += 10
+        if rs <= 0.0:
+            malus += 10
+        # Only count RVOL against the bull case if bearish confirmation exists
+        if (last < dma20 or rs <= 0.0) and rvol >= 1.0:
+            malus += 5
         out["rejection_down"] = _clamp_int(base + malus)
     else:
         out["rejection_down"] = _clamp_int(25)
