@@ -28,3 +28,6 @@ addopts = "-q"
 pythonpath = ["."]
 
 asyncio_mode = "auto"
+
+[project.scripts]
+sengoku = "optipanel.cli.main:main"
