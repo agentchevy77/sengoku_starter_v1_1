@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optipanel-sengoku"
+version = "0.1.1"
+description = "Sengoku Decision Cockpit — starter scaffold (memory-safe)"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "mypy>=1.11.1",
+    "types-PyYAML",
+    "pre-commit>=3.8.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["optipanel*"]
+exclude = ["tests*", "WORKORDERS*", "docs*", "config*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["."]
+
+asyncio_mode = "auto"

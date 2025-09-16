@@ -1,0 +1,15 @@
+market_data_budget:
+  allowance_lines: 100
+  soft_cap_lines: 60
+  rt_bars_max: 3
+  snapshot_concurrency_max: 10
+  backoff:
+    cooldown_sec: 60
+
+schedulers:
+  prime_interval_sec: 5
+  secondary_thin_interval_sec: 10
+
+cache:
+  max_items: 512
+  default_ttl_sec: 180

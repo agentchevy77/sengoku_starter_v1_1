@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: optipanel-sengoku
+Version: 0.1.1
+Summary: Sengoku Decision Cockpit — starter scaffold (memory-safe)
+Requires-Python: >=3.11
+Requires-Dist: pyyaml>=6.0.1
+Provides-Extra: dev
+Requires-Dist: pytest>=8.2.0; extra == "dev"
+Requires-Dist: mypy>=1.11.1; extra == "dev"
+Requires-Dist: types-PyYAML; extra == "dev"
+Requires-Dist: pre-commit>=3.8.0; extra == "dev"
