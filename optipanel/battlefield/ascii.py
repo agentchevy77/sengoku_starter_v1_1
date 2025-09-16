@@ -1,64 +1,58 @@
-"""
-ASCII battlefield renderer.
+from __future__ import annotations
+from typing import Dict, Any, Iterable
 
-Pure, deterministic; no I/O.
-"""
+# Preferred display order; any extra keys will be appended alphabetically.
+ORDER = ["dma20","support","resistance","rvol","rs"]
 
-from typing import Dict, Any
+def _bar(val: int, width: int) -> str:
+    try:
+        v = int(val)
+    except Exception:
+        v = 0
+    v = 0 if v < 0 else 100 if v > 100 else v
+    n = max(0, min(width, round(v * width / 100)))
+    return "#" * n + "." * (width - n)
 
+def _sorted_keys(d: Dict[str, Any]) -> Iterable[str]:
+    seen = set()
+    for k in ORDER:
+        if k in d:
+            seen.add(k)
+            yield k
+    for k in sorted(d.keys()):
+        if k not in seen:
+            yield k
 
-def render_battlefield(units: Dict[str, Any], width: int = 20) -> str:
+def render_battlefield(units: Dict[str, Dict[str, int]], width: int = 20) -> str:
     """
-    Render battlefield as ASCII grid.
-
-    Args:
-        units: Dict with unit positions and types
-        width: Grid width (height auto-calculated)
-
-    Returns:
-        ASCII string representation of battlefield
+    Multi-line ASCII battlefield:
+      <name>      bull [####......]  bear [###.......]
+    + top summary TOTAL line using average intensities across indicators.
+    Pure, deterministic; no I/O; no colors.
     """
-    if not units:
-        return "." * width + "\n"
+    if not isinstance(units, dict) or not units:
+        return f"TOTAL      bull [{_bar(0, width)}]  bear [{_bar(0, width)}]"
 
-    # Extract positions and determine grid bounds
-    positions = []
-    for unit_data in units.values():
-        if isinstance(unit_data, dict) and "pos" in unit_data:
-            pos = unit_data["pos"]
-            if isinstance(pos, (list, tuple)) and len(pos) >= 2:
-                positions.append((int(pos[0]), int(pos[1])))
+    # Average to keep TOTAL on a 0..100 scale
+    count = 0
+    bull_sum = 0
+    bear_sum = 0
+    for v in units.values():
+        if isinstance(v, dict):
+            bull_sum += int(v.get("bull", 0))
+            bear_sum += int(v.get("bear", 0))
+            count += 1
+    count = max(1, count)
+    bull_avg = round(bull_sum / count)
+    bear_avg = round(bear_sum / count)
 
-    if not positions:
-        return "." * width + "\n"
+    lines = []
+    lines.append(f"TOTAL      bull [{_bar(bull_avg, width)}]  bear [{_bar(bear_avg, width)}]")
 
-    # Calculate grid dimensions
-    min_x = min(pos[0] for pos in positions)
-    max_x = max(pos[0] for pos in positions)
-    min_y = min(pos[1] for pos in positions)
-    max_y = max(pos[1] for pos in positions)
+    for k in _sorted_keys(units):
+        v = units.get(k, {})
+        bull = int(v.get("bull", 0)) if isinstance(v, dict) else 0
+        bear = int(v.get("bear", 0)) if isinstance(v, dict) else 0
+        lines.append(f"{k:<10} bull [{_bar(bull, width)}]  bear [{_bar(bear, width)}]")
 
-    # Ensure minimum grid size
-    grid_width = max(width, max_x - min_x + 3)
-    grid_height = max(3, max_y - min_y + 3)
-
-    # Create grid
-    grid = [["." for _ in range(grid_width)] for _ in range(grid_height)]
-
-    # Place units on grid
-    for unit_id, unit_data in units.items():
-        if isinstance(unit_data, dict) and "pos" in unit_data:
-            pos = unit_data["pos"]
-            if isinstance(pos, (list, tuple)) and len(pos) >= 2:
-                x, y = int(pos[0]) - min_x + 1, int(pos[1]) - min_y + 1
-                if 0 <= x < grid_width and 0 <= y < grid_height:
-                    # Use first character of unit type or ID
-                    symbol = "?"
-                    if "type" in unit_data and unit_data["type"]:
-                        symbol = str(unit_data["type"])[0].upper()
-                    elif unit_id:
-                        symbol = str(unit_id)[0].upper()
-                    grid[y][x] = symbol
-
-    # Convert grid to string
-    return "\n".join("".join(row) for row in grid) + "\n"
+    return "\n".join(lines)
