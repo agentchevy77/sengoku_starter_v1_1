@@ -54,3 +54,7 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def snapshot_cmd(argv=None):
+    return snapshot_main(argv)
