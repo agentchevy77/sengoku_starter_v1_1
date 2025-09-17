@@ -3,14 +3,15 @@ from typing import Dict, Any, List
 from optipanel.runtime.driver import LocalBudget, _expand_usage
 from optipanel.runtime.loop import run_once
 from optipanel.ui.command_room import render_command_room
+from optipanel.notify.engine import aggregate_alerts
 
 def run_profiles_with_provider(profiles_cfg: Dict[str, Any],
                                provider: Any,
                                ticks: int = 3) -> Dict[str, Any]:
     """
     Drive each watchlist through a budget/backoff loop.
-    On scan ticks, fetch features from `provider.features_for_symbols(symbols)`
-    and run the pure decision loop, then render Command Room panels.
+    On scan ticks, fetch features from provider and run the pure decision loop,
+    collect Command Room panels, and aggregate alerts for a notifications strip.
     """
     ui = profiles_cfg.get("ui", {})
     width = int(ui.get("width", 24))
@@ -33,27 +34,30 @@ def run_profiles_with_provider(profiles_cfg: Dict[str, Any],
         provider_calls = 0
         last_advice_counts = None
         top_last: List[str] = []
+        runs: List[Dict[str, Any]] = []
 
         for i in range(max(1, int(ticks))):
             used = int(usage_seq[i])
             in_backoff = budget.step(used)
             do_scan = (i % stride == 0) if in_backoff else True
 
-            tick_run = None
             if do_scan and symbols:
                 feats = provider.features_for_symbols(symbols)
                 provider_calls += 1
                 tick_run = run_once(feats)
-                panels.append(render_battlefield_panel(tick_run, width=width, top_n=top_n))
+                runs.append(tick_run)
+                panels.append(render_command_room(tick_run, width=width, top_n=top_n))
                 last_advice_counts = tick_run["scan"].get("advice_counts", last_advice_counts)
                 top_last = tick_run["scan"].get("top", top_last)
 
+        notify = aggregate_alerts(runs) if runs else {"events": [], "counts": {"high":0,"medium":0,"low":0,"info":0}}
         lists_out[name] = {
             "provider_calls": provider_calls,
             "scanned_count": len(panels),
             "panels": panels,
             "advice_counts_last": last_advice_counts or {"attack":0,"defend":0,"standby":0},
-            "top_last": top_last
+            "top_last": top_last,
+            "notify": notify,
         }
 
     return {"lists": lists_out, "ticks": int(ticks)}
