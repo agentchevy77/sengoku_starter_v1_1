@@ -23,3 +23,9 @@ def run_once(symbols_to_features: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     alerts_out = analyze_batch(snaps, DEFAULT_THRESH)
 
     return {"scan": scan_out, "alerts": alerts_out}
+
+
+def run_once_with(provider, symbols):
+    """Use a FeaturesProvider to collect features, then run the pure tick."""
+    feats = provider.features_for_symbols(list(symbols))
+    return run_once(feats)
