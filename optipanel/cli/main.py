@@ -181,6 +181,11 @@ def main(argv=None):
     d.add_argument("--sleep", type=float, default=0.0)
 
     pr = sub.add_parser("profiles", help="Run Prime/Secondary profiles (offline)")
+    prl = sub.add_parser("profiles-live", help="Run profiles with a provider (mock for now)")
+    prl.add_argument("--profiles-yaml", required=True)
+    prl.add_argument("--provider", default="mock", choices=["mock"])
+    prl.add_argument("--features-yaml")
+    prl.add_argument("--ticks", type=int, default=3)
     pr.add_argument("--profiles-yaml", required=True)
     pr.add_argument("--features-yaml", required=True)
     pr.add_argument("--ticks", type=int, default=3)
@@ -219,7 +224,43 @@ def main(argv=None):
             "--features-yaml", args.features_yaml,
             "--ticks", str(getattr(args, "ticks", 3)),
         ])
+    if args.cmd == "profiles-live":
+        return profiles_live_main([
+            "--profiles-yaml", args.profiles_yaml,
+            "--provider", args.provider,
+            "--features-yaml", getattr(args, "features_yaml", None) or "",
+            "--ticks", str(getattr(args, "ticks", 3)),
+        ])
     p.error("unknown command")
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def profiles_live_cmd(profiles_yaml_text: str, provider: str, features_yaml_text: str | None, ticks: int = 3):
+    from optipanel.config.loader import parse_profiles_yaml, parse_features_yaml
+    from optipanel.runtime.profiles_live import run_profiles_with_provider
+    if provider == "mock":
+        assert features_yaml_text is not None, "features-yaml is required for provider=mock"
+        feats = parse_features_yaml(features_yaml_text)
+        from optipanel.adapters.ibkr import MockFeaturesProvider
+        prov = MockFeaturesProvider(feats)
+    else:
+        raise ValueError("Unsupported provider (use 'mock' for now)")
+    prof = parse_profiles_yaml(profiles_yaml_text)
+    return run_profiles_with_provider(prof, prov, ticks=int(ticks))
+
+
+def profiles_live_main(argv=None):
+    import argparse, pathlib, json
+    ap = argparse.ArgumentParser(prog="sengoku profiles-live")
+    ap.add_argument("--profiles-yaml", required=True)
+    ap.add_argument("--provider", default="mock", choices=["mock"])  # 'tws' soon
+    ap.add_argument("--features-yaml")  # required for mock
+    ap.add_argument("--ticks", type=int, default=3)
+    args = ap.parse_args(argv)
+    prof_txt = pathlib.Path(args.profiles_yaml).read_text()
+    feats_txt = pathlib.Path(args.features_yaml).read_text() if args.features_yaml else None
+    out = profiles_live_cmd(prof_txt, args.provider, feats_txt, ticks=int(args.ticks))
+    print(json.dumps(out, indent=2, sort_keys=True))
+    return 0
