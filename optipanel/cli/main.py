@@ -1,6 +1,7 @@
 from __future__ import annotations
 import argparse, json
 from typing import Dict, Any, List
+import os
 
 from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
@@ -251,38 +252,49 @@ if __name__ == "__main__":
 
 
 def profiles_live_cmd(profiles_yaml_text: str, provider: str, features_yaml_text: str | None, ticks: int = 3):
+    """
+    Live profiles runner with three providers:
+      - mock:      features_yaml -> MockFeaturesProvider
+      - tws-mock:  TWS-shaped mock fetcher -> translator
+      - tws-live:  Real IBKR TWS via ibapi (env-configured) -> translator
+    """
     from optipanel.config.loader import parse_profiles_yaml, parse_features_yaml
     from optipanel.runtime.profiles_live import run_profiles_with_provider
 
     if provider == "mock":
-        # Simple dict-based provider
+        # simple dict-based features provider
         assert features_yaml_text is not None, "features-yaml is required for provider=mock"
         feats = parse_features_yaml(features_yaml_text)
         from optipanel.adapters.ibkr import MockFeaturesProvider
         prov = MockFeaturesProvider(feats)
 
     elif provider == "tws-mock":
-        # IBKR-shaped path: fetcher returns TWS-like raw -> translator -> features
-        from optipanel.adapters.ibkr.translator import translate_snapshots
-        from optipanel.adapters.ibkr.fetchers_mock import MockTwsFetcher
-        from optipanel.adapters.ibkr import TwsFeaturesProvider
+        # TWS-shaped mock fetch -> translator -> features
         assert features_yaml_text is not None, "features-yaml is required for provider=tws-mock"
         feats = parse_features_yaml(features_yaml_text)
+        from optipanel.adapters.ibkr.fetchers_mock import MockTwsFetcher
+        from optipanel.adapters.ibkr.translator import translate_snapshots
+        from optipanel.adapters.ibkr import TwsFeaturesProvider
         prov = TwsFeaturesProvider(fetcher=MockTwsFetcher(feats), translator=translate_snapshots)
 
     elif provider == "tws-live":
+        # Real TWS fetch via ibapi; read connection from environment or globals
+        import os
         from optipanel.adapters.ibkr import RealTwsFetcher, RealTwsFetcherConfig
         from optipanel.adapters.ibkr.translator import translate_snapshots
-        cfg = RealTwsFetcherConfig(
-            host=globals().get("_tws_host","127.0.0.1"),
-            port=int(globals().get("_tws_port",7497)),
-            client_id=int(globals().get("_tws_client_id",107)),
-            ref_symbol=str(globals().get("_tws_ref_symbol","SPY")),
-        )
+
+        host       = os.environ.get("SENGOKU_TWS_HOST") or globals().get("_tws_host", "127.0.0.1")
+        port       = int(os.environ.get("SENGOKU_TWS_PORT") or globals().get("_tws_port", 7497))
+        client_id  = int(os.environ.get("SENGOKU_TWS_CLIENT_ID") or globals().get("_tws_client_id", 107))
+        ref_symbol = os.environ.get("SENGOKU_TWS_REF") or globals().get("_tws_ref_symbol", "SPY")
+
+        cfg = RealTwsFetcherConfig(host=host, port=port, client_id=client_id, ref_symbol=ref_symbol)
         fetcher = RealTwsFetcher(cfg)
+        # minimal provider wrapper to fit the existing runtime
         prov = type("Proxy", (), {
             "features_for_symbols": lambda self, syms: translate_snapshots(fetcher(list(syms)))
         })()
+
     else:
         raise ValueError("Unsupported provider (use 'mock', 'tws-mock' or 'tws-live')")
 
