@@ -1,9 +1,30 @@
 from __future__ import annotations
 import argparse, json
+from typing import Dict, Any, List
+
 from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
 from optipanel.alerts.engine import analyze_batch, DEFAULT_THRESH
 
+# --------------------------------------------------------------------------------------
+# Programmatic helpers (pure) — used by tests and other Python callers
+# --------------------------------------------------------------------------------------
+def snapshot_cmd(symbol: str, features: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a single symbol snapshot (pure, no printing)."""
+    return build_symbol_snapshot(symbol, features)
+
+def scan_cmd(symbols: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """Return multi-symbol scan results (pure, no printing)."""
+    return run_local_scan(symbols)
+
+def alerts_cmd(symbols: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Return alerts for a dict of {symbol: features} (pure, no printing)."""
+    snaps = [build_symbol_snapshot(sym, feats) for sym, feats in symbols.items()]
+    return analyze_batch(snaps, DEFAULT_THRESH)
+
+# --------------------------------------------------------------------------------------
+# CLI entry points — print JSON and return exit codes
+# --------------------------------------------------------------------------------------
 def snapshot_main(argv=None):
     ap = argparse.ArgumentParser(prog="sengoku snapshot")
     ap.add_argument("--symbol", required=True)
@@ -36,13 +57,17 @@ def alerts_main(argv=None):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="sengoku")
     sub = p.add_subparsers(dest="cmd", required=True)
+
     s = sub.add_parser("snapshot", help="Print a single symbol snapshot")
     s.add_argument("--symbol", required=True)
     s.add_argument("--features-json", required=True)
+
     sc = sub.add_parser("scan", help="Rank multiple symbols")
     sc.add_argument("--symbols-json", required=True)
+
     a = sub.add_parser("alerts", help="Generate alerts for multiple symbols")
     a.add_argument("--symbols-json", required=True)
+
     args = p.parse_args(argv)
     if args.cmd == "snapshot":
         return snapshot_main(["--symbol", args.symbol, "--features-json", args.features_json])
@@ -54,7 +79,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-def snapshot_cmd(argv=None):
-    return snapshot_main(argv)
