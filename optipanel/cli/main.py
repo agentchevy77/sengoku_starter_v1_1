@@ -80,6 +80,13 @@ def main(argv=None):
         return scan_main(["--symbols-json", args.symbols_json])
     if args.cmd == "alerts":
         return alerts_main(["--symbols-json", args.symbols_json])
+    if args.cmd == "driver":
+        return driver_main([
+            "--symbols-json", args.symbols_json,
+            "--profile-json", args.profile_json,
+            "--ticks", str(getattr(args, "ticks", 5)),
+            "--sleep", str(getattr(args, "sleep", 0.0)),
+        ])
     if args.cmd == "command-room":
         return command_room_main([
             "--symbols-json", args.symbols_json,
@@ -153,4 +160,28 @@ def command_room_main(argv=None):
         if args.sleep > 0 and i+1 < int(args.iterations):
             time.sleep(args.sleep)
     print("\n---\n".join(chunks))
+    return 0
+
+
+def driver_cmd(symbols, profile, ticks: int = 5):
+    from optipanel.runtime.driver import run_driver
+    return run_driver(symbols, profile, ticks=int(ticks))
+
+
+def driver_main(argv=None):
+    import argparse, json, time
+    from optipanel.runtime.driver import run_driver
+    ap = argparse.ArgumentParser(prog="sengoku driver")
+    ap.add_argument("--symbols-json", required=True)
+    ap.add_argument("--profile-json", required=True,
+                    help='JSON: {"soft_cap":int,"cooldown":int,"used_lines":int|[...],"scan_stride_backoff":int}')
+    ap.add_argument("--ticks", type=int, default=5)
+    ap.add_argument("--sleep", type=float, default=0.0)
+    args = ap.parse_args(argv)
+    symbols = json.loads(args.symbols_json)
+    profile = json.loads(args.profile_json)
+    out = run_driver(symbols, profile, ticks=int(args.ticks))
+    if args.sleep > 0:
+        time.sleep(args.sleep)
+    print(json.dumps(out, indent=2, sort_keys=True))
     return 0
