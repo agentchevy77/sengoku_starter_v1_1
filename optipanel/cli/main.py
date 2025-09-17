@@ -292,7 +292,7 @@ def profiles_live_cmd(profiles_yaml_text: str, provider: str, features_yaml_text
         fetcher = RealTwsFetcher(cfg)
         # minimal provider wrapper to fit the existing runtime
         prov = type("Proxy", (), {
-            "features_for_symbols": lambda self, syms: translate_snapshots(fetcher(list(syms)))
+            "features_for_symbols": lambda self, syms: (fetcher.features_for_symbols(list(syms))  if hasattr(fetcher,'features_for_symbols')  else translate_snapshots(fetcher(list(syms))))
         })()
 
     else:

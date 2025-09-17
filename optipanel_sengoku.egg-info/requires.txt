@@ -5,3 +5,6 @@ pytest>=8.2.0
 mypy>=1.11.1
 types-PyYAML
 pre-commit>=3.8.0
+
+[ibkr]
+ibapi>=10.19.1
