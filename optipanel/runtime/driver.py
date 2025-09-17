@@ -7,7 +7,8 @@ class LocalBudget:
     """
     Minimal soft-cap + cooldown backoff model (pure local stub).
     - backoff becomes True when used_lines > soft_cap
-    - once over cap, backoff persists for `cooldown` ticks after usage falls back
+    - after the last breach, backoff persists for `cooldown` *full* below-cap ticks,
+      and exits backoff on the *following* tick.
     """
     def __init__(self, soft_cap: int, cooldown: int):
         self.soft_cap = int(soft_cap)
@@ -21,18 +22,25 @@ class LocalBudget:
 
     def step(self, used_lines: int) -> bool:
         used = int(used_lines)
+
+        # Breach: enter/refresh backoff and reset cooldown window.
         if used > self.soft_cap:
-            # breach -> enter/refresh backoff
             self._backoff = True
             self._cooldown_left = self.cooldown
-        else:
-            # not over cap: if in backoff, count down cooldown ticks
-            if self._backoff:
-                if self._cooldown_left > 0:
-                    self._cooldown_left -= 1
-                if self._cooldown_left == 0:
-                    self._backoff = False
-        return self._backoff
+            return True
+
+        # Below cap:
+        if self._backoff:
+            # Stay in backoff for this tick if cooldown window not yet consumed.
+            in_backoff_this_tick = self._cooldown_left > 0
+            if self._cooldown_left > 0:
+                self._cooldown_left -= 1
+            if not in_backoff_this_tick:
+                # Cooldown completed on the prior tick; leave backoff now.
+                self._backoff = False
+            return in_backoff_this_tick
+
+        return False
 
 def _expand_usage(used: Union[int, List[int]], ticks: int) -> List[int]:
     if isinstance(used, int):
@@ -77,6 +85,7 @@ def run_driver(symbols_to_features: Dict[str, Dict[str, Any]],
     for i in range(tmax):
         used = int(usage_seq[i])
         in_backoff = budget.step(used)
+
         if in_backoff:
             backoff_ticks += 1
             # only scan every Nth tick while in backoff
