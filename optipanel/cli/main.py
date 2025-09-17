@@ -181,6 +181,9 @@ def main(argv=None):
     d.add_argument("--sleep", type=float, default=0.0)
 
     pr = sub.add_parser("profiles", help="Run Prime/Secondary profiles (offline)")
+    nt = sub.add_parser("notify", help="Aggregate alerts into a deduped event list")
+    nt.add_argument("--symbols-json", required=True)
+    nt.add_argument("--iterations", type=int, default=2)
     prl = sub.add_parser("profiles-live", help="Run profiles with a provider (mock for now)")
     prl.add_argument("--profiles-yaml", required=True)
     prl.add_argument("--provider", default="mock", choices=["mock"])
@@ -224,6 +227,11 @@ def main(argv=None):
             "--features-yaml", args.features_yaml,
             "--ticks", str(getattr(args, "ticks", 3)),
         ])
+    if args.cmd == "notify":
+        return notify_main([
+            "--symbols-json", args.symbols_json,
+            "--iterations", str(getattr(args, "iterations", 2)),
+        ])
     if args.cmd == "profiles-live":
         return profiles_live_main([
             "--profiles-yaml", args.profiles_yaml,
@@ -262,5 +270,24 @@ def profiles_live_main(argv=None):
     prof_txt = pathlib.Path(args.profiles_yaml).read_text()
     feats_txt = pathlib.Path(args.features_yaml).read_text() if args.features_yaml else None
     out = profiles_live_cmd(prof_txt, args.provider, feats_txt, ticks=int(args.ticks))
+    print(json.dumps(out, indent=2, sort_keys=True))
+    return 0
+
+
+def notify_cmd(symbols, iterations: int = 2):
+    from optipanel.runtime.loop import run_once
+    from optipanel.notify.engine import aggregate_alerts
+    runs = [run_once(symbols) for _ in range(max(1,int(iterations)))]
+    return aggregate_alerts(runs)
+
+
+def notify_main(argv=None):
+    import argparse, json
+    ap = argparse.ArgumentParser(prog="sengoku notify")
+    ap.add_argument("--symbols-json", required=True)
+    ap.add_argument("--iterations", type=int, default=2)
+    args = ap.parse_args(argv)
+    symbols = json.loads(args.symbols_json)
+    out = notify_cmd(symbols, iterations=int(args.iterations))
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0
