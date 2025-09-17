@@ -80,6 +80,14 @@ def main(argv=None):
         return scan_main(["--symbols-json", args.symbols_json])
     if args.cmd == "alerts":
         return alerts_main(["--symbols-json", args.symbols_json])
+    if args.cmd == "command-room":
+        return command_room_main([
+            "--symbols-json", args.symbols_json,
+            "--width", str(getattr(args, "width", 24)),
+            "--top-n", str(getattr(args, "top_n", 1)),
+            "--iterations", str(getattr(args, "iterations", 1)),
+            "--sleep", str(getattr(args, "sleep", 0.0)),
+        ])
     if args.cmd == "loop":
         return loop_main([
             "--symbols-json", args.symbols_json,
@@ -115,4 +123,34 @@ def loop_main(argv=None):
         if args.sleep > 0:
             time.sleep(args.sleep)
     print(json.dumps({"iterations": int(args.iterations), "runs": runs}, indent=2, sort_keys=True))
+    return 0
+
+
+def command_room_cmd(symbols, width: int = 24, top_n: int = 1, iterations: int = 1):
+    from optipanel.runtime.loop import run_once
+    from optipanel.ui.command_room import render_command_room
+    outs = []
+    for _ in range(max(1, int(iterations))):
+        outs.append(render_command_room(run_once(symbols), width=width, top_n=top_n))
+    return "\n---\n".join(outs)
+
+
+def command_room_main(argv=None):
+    import argparse, json, time
+    from optipanel.runtime.loop import run_once
+    from optipanel.ui.command_room import render_command_room
+    ap = argparse.ArgumentParser(prog="sengoku command-room")
+    ap.add_argument("--symbols-json", required=True)
+    ap.add_argument("--width", type=int, default=24)
+    ap.add_argument("--top-n", type=int, default=1)
+    ap.add_argument("--iterations", type=int, default=1)
+    ap.add_argument("--sleep", type=float, default=0.0)
+    args = ap.parse_args(argv)
+    symbols = json.loads(args.symbols_json)
+    chunks = []
+    for i in range(max(1, int(args.iterations))):
+        chunks.append(render_command_room(run_once(symbols), width=int(args.width), top_n=int(args.top_n)))
+        if args.sleep > 0 and i+1 < int(args.iterations):
+            time.sleep(args.sleep)
+    print("\n---\n".join(chunks))
     return 0
