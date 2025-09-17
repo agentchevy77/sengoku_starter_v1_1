@@ -136,6 +136,10 @@ def profiles_main(argv=None):
     ap.add_argument("--profiles-yaml", required=True)
     ap.add_argument("--features-yaml", required=True)
     ap.add_argument("--ticks", type=int, default=3)
+    ap.add_argument("--tws-host", default="127.0.0.1")
+    ap.add_argument("--tws-port", type=int, default=7497)
+    ap.add_argument("--client-id", type=int, default=107)
+    ap.add_argument("--ref-symbol", default="SPY")
     args = ap.parse_args(argv)
     prof_txt = pathlib.Path(args.profiles_yaml).read_text()
     feat_txt = pathlib.Path(args.features_yaml).read_text()
@@ -186,7 +190,7 @@ def main(argv=None):
     nt.add_argument("--iterations", type=int, default=2)
     prl = sub.add_parser("profiles-live", help="Run profiles with a provider (mock for now)")
     prl.add_argument("--profiles-yaml", required=True)
-    prl.add_argument("--provider", default="mock", choices=["mock","tws-mock"])
+    prl.add_argument("--provider", default="mock", choices=["mock","tws-mock","tws-live"])
     prl.add_argument("--features-yaml")
     prl.add_argument("--ticks", type=int, default=3)
     pr.add_argument("--profiles-yaml", required=True)
@@ -266,8 +270,21 @@ def profiles_live_cmd(profiles_yaml_text: str, provider: str, features_yaml_text
         feats = parse_features_yaml(features_yaml_text)
         prov = TwsFeaturesProvider(fetcher=MockTwsFetcher(feats), translator=translate_snapshots)
 
+    elif provider == "tws-live":
+        from optipanel.adapters.ibkr import RealTwsFetcher, RealTwsFetcherConfig
+        from optipanel.adapters.ibkr.translator import translate_snapshots
+        cfg = RealTwsFetcherConfig(
+            host=globals().get("_tws_host","127.0.0.1"),
+            port=int(globals().get("_tws_port",7497)),
+            client_id=int(globals().get("_tws_client_id",107)),
+            ref_symbol=str(globals().get("_tws_ref_symbol","SPY")),
+        )
+        fetcher = RealTwsFetcher(cfg)
+        prov = type("Proxy", (), {
+            "features_for_symbols": lambda self, syms: translate_snapshots(fetcher(list(syms)))
+        })()
     else:
-        raise ValueError("Unsupported provider (use 'mock' or 'tws-mock')")
+        raise ValueError("Unsupported provider (use 'mock', 'tws-mock' or 'tws-live')")
 
     prof = parse_profiles_yaml(profiles_yaml_text)
     return run_profiles_with_provider(prof, prov, ticks=int(ticks))
@@ -276,12 +293,21 @@ def profiles_live_main(argv=None):
     import argparse, pathlib, json
     ap = argparse.ArgumentParser(prog="sengoku profiles-live")
     ap.add_argument("--profiles-yaml", required=True)
-    ap.add_argument("--provider", default="mock", choices=["mock","tws-mock"])  # 'tws' soon
+    ap.add_argument("--provider", default="mock", choices=["mock","tws-mock","tws-live"])  # 'tws' soon
     ap.add_argument("--features-yaml")  # required for mock
     ap.add_argument("--ticks", type=int, default=3)
+    ap.add_argument("--tws-host", default="127.0.0.1")
+    ap.add_argument("--tws-port", type=int, default=7497)
+    ap.add_argument("--client-id", type=int, default=107)
+    ap.add_argument("--ref-symbol", default="SPY")
     args = ap.parse_args(argv)
     prof_txt = pathlib.Path(args.profiles_yaml).read_text()
     feats_txt = pathlib.Path(args.features_yaml).read_text() if args.features_yaml else None
+    # pass connection params via globals to keep signatures stable
+    globals()["_tws_host"] = args.tws_host
+    globals()["_tws_port"] = args.tws_port
+    globals()["_tws_client_id"] = args.client_id
+    globals()["_tws_ref_symbol"] = args.ref_symbol
     out = profiles_live_cmd(prof_txt, args.provider, feats_txt, ticks=int(args.ticks))
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0
