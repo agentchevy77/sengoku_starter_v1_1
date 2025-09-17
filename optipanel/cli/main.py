@@ -245,29 +245,32 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
+
 def profiles_live_cmd(profiles_yaml_text: str, provider: str, features_yaml_text: str | None, ticks: int = 3):
     from optipanel.config.loader import parse_profiles_yaml, parse_features_yaml
     from optipanel.runtime.profiles_live import run_profiles_with_provider
+
     if provider == "mock":
-    # Simple dict-based provider
-    elif provider == "tws-mock":
-    from optipanel.adapters.ibkr.translator import translate_snapshots
-    from optipanel.adapters.ibkr.fetchers_mock import MockTwsFetcher
-    from optipanel.adapters.ibkr import TwsFeaturesProvider
-    assert features_yaml_text is not None, "features-yaml is required for provider=tws-mock"
-    feats = parse_features_yaml(features_yaml_text)
-    prov = TwsFeaturesProvider(fetcher=MockTwsFetcher(feats), translator=translate_snapshots)
-else:
-    raise ValueError("Unsupported provider (use 'mock' or 'tws-mock')")
+        # Simple dict-based provider
         assert features_yaml_text is not None, "features-yaml is required for provider=mock"
         feats = parse_features_yaml(features_yaml_text)
         from optipanel.adapters.ibkr import MockFeaturesProvider
         prov = MockFeaturesProvider(feats)
+
+    elif provider == "tws-mock":
+        # IBKR-shaped path: fetcher returns TWS-like raw -> translator -> features
+        from optipanel.adapters.ibkr.translator import translate_snapshots
+        from optipanel.adapters.ibkr.fetchers_mock import MockTwsFetcher
+        from optipanel.adapters.ibkr import TwsFeaturesProvider
+        assert features_yaml_text is not None, "features-yaml is required for provider=tws-mock"
+        feats = parse_features_yaml(features_yaml_text)
+        prov = TwsFeaturesProvider(fetcher=MockTwsFetcher(feats), translator=translate_snapshots)
+
     else:
-        raise ValueError("Unsupported provider (use 'mock' for now)")
+        raise ValueError("Unsupported provider (use 'mock' or 'tws-mock')")
+
     prof = parse_profiles_yaml(profiles_yaml_text)
     return run_profiles_with_provider(prof, prov, ticks=int(ticks))
-
 
 def profiles_live_main(argv=None):
     import argparse, pathlib, json
