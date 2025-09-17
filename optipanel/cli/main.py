@@ -186,7 +186,7 @@ def main(argv=None):
     nt.add_argument("--iterations", type=int, default=2)
     prl = sub.add_parser("profiles-live", help="Run profiles with a provider (mock for now)")
     prl.add_argument("--profiles-yaml", required=True)
-    prl.add_argument("--provider", default="mock", choices=["mock"])
+    prl.add_argument("--provider", default="mock", choices=["mock","tws-mock"])
     prl.add_argument("--features-yaml")
     prl.add_argument("--ticks", type=int, default=3)
     pr.add_argument("--profiles-yaml", required=True)
@@ -249,6 +249,16 @@ def profiles_live_cmd(profiles_yaml_text: str, provider: str, features_yaml_text
     from optipanel.config.loader import parse_profiles_yaml, parse_features_yaml
     from optipanel.runtime.profiles_live import run_profiles_with_provider
     if provider == "mock":
+    # Simple dict-based provider
+    elif provider == "tws-mock":
+    from optipanel.adapters.ibkr.translator import translate_snapshots
+    from optipanel.adapters.ibkr.fetchers_mock import MockTwsFetcher
+    from optipanel.adapters.ibkr import TwsFeaturesProvider
+    assert features_yaml_text is not None, "features-yaml is required for provider=tws-mock"
+    feats = parse_features_yaml(features_yaml_text)
+    prov = TwsFeaturesProvider(fetcher=MockTwsFetcher(feats), translator=translate_snapshots)
+else:
+    raise ValueError("Unsupported provider (use 'mock' or 'tws-mock')")
         assert features_yaml_text is not None, "features-yaml is required for provider=mock"
         feats = parse_features_yaml(features_yaml_text)
         from optipanel.adapters.ibkr import MockFeaturesProvider
@@ -263,7 +273,7 @@ def profiles_live_main(argv=None):
     import argparse, pathlib, json
     ap = argparse.ArgumentParser(prog="sengoku profiles-live")
     ap.add_argument("--profiles-yaml", required=True)
-    ap.add_argument("--provider", default="mock", choices=["mock"])  # 'tws' soon
+    ap.add_argument("--provider", default="mock", choices=["mock","tws-mock"])  # 'tws' soon
     ap.add_argument("--features-yaml")  # required for mock
     ap.add_argument("--ticks", type=int, default=3)
     args = ap.parse_args(argv)
