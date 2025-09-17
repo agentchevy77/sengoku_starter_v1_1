@@ -1,0 +1,7 @@
+watchlists:
+  prime: [AAPL, MSFT]
+  secondary: [SPY]
+budgets:
+  prime:      {soft_cap: 20, cooldown: 1, used_lines: 1, scan_stride_backoff: 1}
+  secondary:  {soft_cap: 20, cooldown: 1, used_lines: 1}
+ui:          {width: 24, top_n: 2}
