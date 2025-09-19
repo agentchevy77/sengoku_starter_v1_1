@@ -12,5 +12,8 @@ __pycache__/
 # Packaging
 *.egg-info/
 
+# Logs
+logs/
+
 # pre-commit
 .pre-commit-cache/

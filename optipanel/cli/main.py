@@ -2,12 +2,58 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import os
+from contextlib import suppress
+from datetime import datetime
+from pathlib import Path
 from typing import Any, cast
 
 from optipanel.adapters.ibkr.iface import FeaturesProvider
 from optipanel.alerts.engine import DEFAULT_THRESH, analyze_batch
 from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
+
+_LOG_INITIALIZED = False
+
+
+def setup_logging() -> None:
+    """Configure root logging with a per-session file handler."""
+
+    global _LOG_INITIALIZED
+    if _LOG_INITIALIZED:
+        return
+
+    level_name = os.environ.get("SENGOKU_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+
+    if os.environ.get("SENGOKU_DISABLE_FILE_LOGS"):
+        logging.basicConfig(level=level, format="%(asctime)s - %(levelname)s - %(message)s")
+        _LOG_INITIALIZED = True
+        return
+
+    root = Path(__file__).resolve().parents[2]
+    log_dir = root / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_file = log_dir / f"sengoku_{timestamp}.log"
+
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    handlers.append(logging.FileHandler(log_file))
+
+    logging.basicConfig(level=level, format="%(asctime)s - %(levelname)s - %(message)s", handlers=handlers)
+
+    max_logs = int(os.environ.get("SENGOKU_MAX_LOG_FILES", "0"))
+    if max_logs > 0:
+        existing = sorted(log_dir.glob("sengoku_*.log"))
+        excess = len(existing) - max_logs
+        for stale in existing[:excess]:
+            with suppress(Exception):
+                stale.unlink()
+
+    logging.info("Logging configured for session: %s", log_file)
+    _LOG_INITIALIZED = True
 
 
 # Programmatic helpers (pure)
@@ -191,6 +237,7 @@ def snapshot_cmd_alias(argv=None):  # legacy alias kept for completeness
 
 
 def main(argv=None):
+    setup_logging()
     p = argparse.ArgumentParser(prog="sengoku")
     sub = p.add_subparsers(dest="cmd", required=True)
 

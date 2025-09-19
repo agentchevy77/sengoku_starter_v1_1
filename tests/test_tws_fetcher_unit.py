@@ -1,5 +1,4 @@
 import dataclasses
-import dataclasses
 from collections import OrderedDict
 from types import SimpleNamespace
 
@@ -249,7 +248,7 @@ class DummyApp:
         self.run_called = False
         self.disconnect_called = False
 
-    def connect(self, host: str, port: int, clientId: int) -> None:
+    def connect(self, host: str, port: int, clientId: int) -> None:  # noqa: N803 (match ibapi signature)
         self.connect_args = (host, port, clientId)
 
     def run(self) -> None:
