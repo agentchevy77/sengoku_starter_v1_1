@@ -8,11 +8,11 @@ from collections import OrderedDict, deque
 from dataclasses import dataclass
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from ibapi.client import EClient
 from ibapi.contract import Contract
 from ibapi.wrapper import EWrapper
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
