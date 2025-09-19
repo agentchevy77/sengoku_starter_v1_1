@@ -1,5 +1,3 @@
-import builtins
-
 import pytest
 
 from optipanel.cli import main as cli_main

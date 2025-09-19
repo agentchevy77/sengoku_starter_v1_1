@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import yaml
 
 from optipanel import settings as settings_mod
@@ -33,4 +31,3 @@ def test_load_settings_defaults(tmp_path, monkeypatch):
     assert s.allowance_lines == 1000
     assert s.backoff_cooldown_sec == 2
     assert s.cache_default_ttl_sec == 60
-

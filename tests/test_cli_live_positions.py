@@ -1,10 +1,6 @@
-import builtins
-
-import pytest
-
-
 def test_cli_help_runs(capsys):
     from click.testing import CliRunner
+
     from optipanel.cli.live_positions import live_positions
 
     runner = CliRunner()
@@ -15,7 +11,7 @@ def test_cli_help_runs(capsys):
 
 def test_cli_runs_one_tick_without_sleep(monkeypatch, capsys):
     from click.testing import CliRunner
-    from optipanel import cli as cli_pkg  # ensure package import works
+
     from optipanel.cli import live_positions as mod
 
     # Patch RealTwsFetcher and its features_for_symbols
@@ -39,7 +35,7 @@ def test_cli_runs_one_tick_without_sleep(monkeypatch, capsys):
             return {s: dict(base) for s in symbols}
 
     monkeypatch.setattr(mod, "RealTwsFetcher", DummyFetcher)
-    monkeypatch.setattr(mod, "cfg_from_env", lambda: {})
+    monkeypatch.setattr(mod, "cfg_from_env", dict)
 
     # Avoid real sleep
     monkeypatch.setattr(mod, "time", type("T", (), {"sleep": lambda *_: None}))
