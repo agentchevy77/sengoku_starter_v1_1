@@ -1,11 +1,27 @@
 import json
-from optipanel.runtime.loop import run_once
-from optipanel.cli.main import loop_main
 
-BULL = dict(last=105.0, dma20=100.0, support=101.0, resistance=106.0,
-            rvol=1.6, rs_strength=0.30, vwap_diff=0.012)
-BEAR = dict(last=95.0, dma20=100.0, support=96.0, resistance=100.0,
-            rvol=1.5, rs_strength=-0.25, vwap_diff=-0.012)
+from optipanel.cli.main import loop_main
+from optipanel.runtime.loop import run_once
+
+BULL = {
+    "last": 105.0,
+    "dma20": 100.0,
+    "support": 101.0,
+    "resistance": 106.0,
+    "rvol": 1.6,
+    "rs_strength": 0.30,
+    "vwap_diff": 0.012,
+}
+BEAR = {
+    "last": 95.0,
+    "dma20": 100.0,
+    "support": 96.0,
+    "resistance": 100.0,
+    "rvol": 1.5,
+    "rs_strength": -0.25,
+    "vwap_diff": -0.012,
+}
+
 
 def test_run_once_has_scan_and_alerts():
     out = run_once({"AAA": BULL, "BBB": BEAR})
@@ -16,8 +32,9 @@ def test_run_once_has_scan_and_alerts():
     # sanity: both symbols represented somewhere in output
     syms_scan = {r["symbol"] for r in out["scan"]["results"]}
     syms_alert = {a["symbol"] for a in out["alerts"]}
-    assert {"AAA","BBB"} & syms_scan
-    assert {"AAA","BBB"} <= (syms_scan | syms_alert)
+    assert {"AAA", "BBB"} & syms_scan
+    assert {"AAA", "BBB"} <= (syms_scan | syms_alert)
+
 
 def test_loop_main_json(capsys):
     payload = json.dumps({"AAA": BULL, "BBB": BEAR})

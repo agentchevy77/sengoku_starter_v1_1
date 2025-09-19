@@ -15,9 +15,13 @@ dependencies = [
 ibkr = ["ibapi>=10.19.1"]
 dev = [
     "pytest>=8.2.0",
+    "pytest-mock>=3.12.0",
+    "pytest-cov>=4.0.0",
     "mypy>=1.11.1",
     "types-PyYAML",
     "pre-commit>=3.8.0",
+    "black>=24.8.0",
+    "ruff>=0.6.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -25,10 +29,71 @@ include = ["optipanel*"]
 exclude = ["tests*", "WORKORDERS*", "docs*", "config*"]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q --cov=optipanel --cov-report=term-missing --cov-report=html"
 pythonpath = ["."]
-
 asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests"
+]
+
+[tool.coverage.run]
+source = ["optipanel"]
+omit = [
+    "tests/*",
+    "*/conftest.py",
+    "*/__main__.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:"
+]
 
 [project.scripts]
 sengoku = "optipanel.cli.main:main"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["optipanel", "tests"]
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+namespace_packages = true
+explicit_package_bases = true
+strict_equality = true
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = ["ibapi.*", "yaml"]
+ignore_missing_imports = true
+
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+include = "\\.pyi?$"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "PIE"]
+ignore = ["E501"]  # Line too long (handled by formatter)
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.isort]
+known-first-party = ["optipanel"]
+
+[tool.ruff.lint.per-file-ignores]
+"optipanel/adapters/ibkr/tws_fetcher.py" = ["N802", "N803"]

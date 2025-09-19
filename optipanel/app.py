@@ -1,10 +1,14 @@
 from __future__ import annotations
-import asyncio, signal
-from optipanel.config import load_settings
+
+import asyncio
+import signal
+
+from optipanel.adapters.ibkr.sandbox import SandboxAdapter
 from optipanel.services.cache import TTLCache
 from optipanel.services.leakguard import AsyncResourceRegistry
 from optipanel.services.scheduler import Scheduler
-from optipanel.adapters.ibkr.sandbox import SandboxAdapter
+from optipanel.settings import load_settings
+
 
 async def main():
     settings = load_settings()
@@ -13,8 +17,8 @@ async def main():
     sched = Scheduler(registry=registry, cache=cache)
     adapter = SandboxAdapter()
 
-    symbols_prime = ["AAPL","NVDA","MSFT"]
-    symbols_secondary = ["AMD","META","TSLA","GOOGL"]
+    symbols_prime = ["AAPL", "NVDA", "MSFT"]
+    symbols_secondary = ["AMD", "META", "TSLA", "GOOGL"]
 
     async def prime_tick():
         for sym in symbols_prime:
@@ -32,11 +36,16 @@ async def main():
 
     print("Sengoku starter running (v1.1). Press Ctrl+C to stop.")
     stop_event = asyncio.Event()
-    def _sig(*_): stop_event.set()
+
+    def _sig(*_):
+        stop_event.set()
+
     loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM): loop.add_signal_handler(sig, _sig)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _sig)
     await stop_event.wait()
     await sched.stop()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

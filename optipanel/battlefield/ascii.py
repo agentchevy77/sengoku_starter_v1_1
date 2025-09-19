@@ -1,8 +1,11 @@
 from __future__ import annotations
-from typing import Dict, Any, Iterable
+
+from collections.abc import Iterable
+from typing import Any
 
 # Preferred display order; any extra keys will be appended alphabetically.
-ORDER = ["dma20","support","resistance","rvol","rs"]
+ORDER = ["dma20", "support", "resistance", "rvol", "rs"]
+
 
 def _bar(val: int, width: int) -> str:
     try:
@@ -13,7 +16,8 @@ def _bar(val: int, width: int) -> str:
     n = max(0, min(width, round(v * width / 100)))
     return "#" * n + "." * (width - n)
 
-def _sorted_keys(d: Dict[str, Any]) -> Iterable[str]:
+
+def _sorted_keys(d: dict[str, Any]) -> Iterable[str]:
     seen = set()
     for k in ORDER:
         if k in d:
@@ -23,7 +27,8 @@ def _sorted_keys(d: Dict[str, Any]) -> Iterable[str]:
         if k not in seen:
             yield k
 
-def render_battlefield(units: Dict[str, Dict[str, int]], width: int = 20) -> str:
+
+def render_battlefield(units: dict[str, dict[str, int]], width: int = 20) -> str:
     """
     Multi-line ASCII battlefield:
       <name>      bull [####......]  bear [###.......]

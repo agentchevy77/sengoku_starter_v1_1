@@ -1,5 +1,4 @@
-import json
-from optipanel.config.loader import parse_profiles_yaml, parse_features_yaml
+from optipanel.config.loader import parse_features_yaml, parse_profiles_yaml
 from optipanel.runtime.profiles import run_profiles_offline
 
 PROF_YAML = """
@@ -16,6 +15,7 @@ FEAT_YAML = """
 AAA: {last: 105.0, dma20: 100.0, support: 101.0, resistance: 106.0, rvol: 1.6, rs_strength: 0.3, vwap_diff: 0.012}
 BBB: {last: 95.0, dma20: 100.0, support: 96.0, resistance: 100.0, rvol: 1.5, rs_strength: -0.25, vwap_diff: -0.012}
 """
+
 
 def test_run_profiles_offline_produces_panels():
     prof = parse_profiles_yaml(PROF_YAML)

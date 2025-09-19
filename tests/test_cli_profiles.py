@@ -1,4 +1,5 @@
 import json
+
 from optipanel.cli.main import profiles_main
 
 PROF_YAML = """
@@ -15,6 +16,7 @@ FEAT_YAML = """
 AAA: {last: 105.0, dma20: 100.0, support: 101.0, resistance: 106.0, rvol: 1.6, rs_strength: 0.3, vwap_diff: 0.012}
 BBB: {last: 95.0, dma20: 100.0, support: 96.0, resistance: 100.0, rvol: 1.5, rs_strength: -0.25, vwap_diff: -0.012}
 """
+
 
 def test_cli_profiles_json(tmp_path, capsys):
     prof_p = tmp_path / "profiles.yaml"

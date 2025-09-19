@@ -2,12 +2,14 @@ README.md
 pyproject.toml
 optipanel/__init__.py
 optipanel/app.py
-optipanel/config.py
+optipanel/settings.py
 optipanel/adapters/ibkr/__init__.py
 optipanel/adapters/ibkr/fetchers_mock.py
 optipanel/adapters/ibkr/iface.py
 optipanel/adapters/ibkr/interface.py
 optipanel/adapters/ibkr/mock.py
+optipanel/adapters/ibkr/mock_provider.py
+optipanel/adapters/ibkr/provider.py
 optipanel/adapters/ibkr/sandbox.py
 optipanel/adapters/ibkr/translator.py
 optipanel/adapters/ibkr/tws.py
@@ -18,6 +20,7 @@ optipanel/battlefield/__init__.py
 optipanel/battlefield/ascii.py
 optipanel/battlefield/engine.py
 optipanel/cli/__init__.py
+optipanel/cli/live_positions.py
 optipanel/cli/main.py
 optipanel/config/__init__.py
 optipanel/config/loader.py
@@ -26,6 +29,8 @@ optipanel/engine/aggregate.py
 optipanel/engine/scan.py
 optipanel/notify/__init__.py
 optipanel/notify/engine.py
+optipanel/positions/__init__.py
+optipanel/positions/model.py
 optipanel/runtime/driver.py
 optipanel/runtime/loop.py
 optipanel/runtime/profiles.py

@@ -11,3 +11,6 @@ __pycache__/
 .DS_Store
 # Packaging
 *.egg-info/
+
+# pre-commit
+.pre-commit-cache/

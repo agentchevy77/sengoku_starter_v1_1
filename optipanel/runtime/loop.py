@@ -1,11 +1,13 @@
 from __future__ import annotations
-from typing import Dict, Any, List
 
-from optipanel.engine.scan import run_local_scan
+from typing import Any
+
+from optipanel.alerts.engine import DEFAULT_THRESH, analyze_batch
 from optipanel.engine.aggregate import build_symbol_snapshot
-from optipanel.alerts.engine import analyze_batch, DEFAULT_THRESH
+from optipanel.engine.scan import run_local_scan
 
-def run_once(symbols_to_features: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+
+def run_once(symbols_to_features: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """
     One pure "tick":
       - scan (ranking + advice counts)
@@ -16,10 +18,7 @@ def run_once(symbols_to_features: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     scan_out = run_local_scan(symbols_to_features)
 
     # Build fresh snapshots for alerts (keeps function boundaries clean)
-    snaps = [
-        build_symbol_snapshot(sym, feats)
-        for sym, feats in symbols_to_features.items()
-    ]
+    snaps = [build_symbol_snapshot(sym, feats) for sym, feats in symbols_to_features.items()]
     alerts_out = analyze_batch(snaps, DEFAULT_THRESH)
 
     return {"scan": scan_out, "alerts": alerts_out}

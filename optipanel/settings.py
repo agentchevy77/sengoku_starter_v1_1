@@ -1,6 +1,12 @@
 from __future__ import annotations
-import pathlib, yaml, dataclasses
+
+import dataclasses
+import pathlib
+
+import yaml
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
 
 @dataclasses.dataclass
 class Settings:
@@ -14,10 +20,13 @@ class Settings:
     cache_max_items: int
     cache_default_ttl_sec: int
 
+
 def load_settings() -> Settings:
     ypath = ROOT / "config" / "settings.defaults.yaml"
     cfg = yaml.safe_load(ypath.read_text())
-    b = cfg["market_data_budget"]; s = cfg["schedulers"]; c = cfg["cache"]
+    b = cfg["market_data_budget"]
+    s = cfg["schedulers"]
+    c = cfg["cache"]
     return Settings(
         allowance_lines=b["allowance_lines"],
         soft_cap_lines=b["soft_cap_lines"],

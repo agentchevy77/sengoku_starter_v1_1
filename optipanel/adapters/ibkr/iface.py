@@ -1,5 +1,7 @@
 from __future__ import annotations
-from typing import Protocol, Dict, Any, List
+
+from typing import Any, Protocol
+
 
 class FeaturesProvider(Protocol):
     """
@@ -10,5 +12,5 @@ class FeaturesProvider(Protocol):
       "MSFT": {...}
     }
     """
-    def features_for_symbols(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
-        ...
+
+    def features_for_symbols(self, symbols: list[str]) -> dict[str, dict[str, Any]]: ...

@@ -1,8 +1,11 @@
 from __future__ import annotations
-from typing import Dict, Any, List
+
+from typing import Any
+
 from optipanel.engine.aggregate import build_symbol_snapshot
 
-def run_local_scan(symbols_to_features: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+
+def run_local_scan(symbols_to_features: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """
     Build snapshots for multiple symbols and return:
       {
@@ -12,7 +15,7 @@ def run_local_scan(symbols_to_features: Dict[str, Dict[str, Any]]) -> Dict[str, 
       }
     Pure, deterministic; no I/O.
     """
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for symbol in sorted(symbols_to_features.keys()):
         snap = build_symbol_snapshot(symbol, symbols_to_features[symbol])
         results.append(snap)

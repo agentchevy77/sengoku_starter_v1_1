@@ -1,7 +1,9 @@
 from __future__ import annotations
-from typing import Dict, Any, List, Union
+
+from typing import Any
 
 from optipanel.runtime.loop import run_once
+
 
 class LocalBudget:
     """
@@ -10,6 +12,7 @@ class LocalBudget:
     - after the last breach, backoff persists for `cooldown` *full* below-cap ticks,
       and exits backoff on the *following* tick.
     """
+
     def __init__(self, soft_cap: int, cooldown: int):
         self.soft_cap = int(soft_cap)
         self.cooldown = max(0, int(cooldown))
@@ -42,7 +45,8 @@ class LocalBudget:
 
         return False
 
-def _expand_usage(used: Union[int, List[int]], ticks: int) -> List[int]:
+
+def _expand_usage(used: int | list[int], ticks: int) -> list[int]:
     if isinstance(used, int):
         return [used] * ticks
     if not used:
@@ -52,9 +56,10 @@ def _expand_usage(used: Union[int, List[int]], ticks: int) -> List[int]:
     # pad with last value
     return used + [used[-1]] * (ticks - len(used))
 
-def run_driver(symbols_to_features: Dict[str, Dict[str, Any]],
-               profile: Dict[str, Any],
-               ticks: int = 5) -> Dict[str, Any]:
+
+def run_driver(
+    symbols_to_features: dict[str, dict[str, Any]], profile: dict[str, Any], ticks: int = 5
+) -> dict[str, Any]:
     """
     Budget-aware tick driver (pure/offline). Profile keys:
       - soft_cap: int
@@ -78,7 +83,7 @@ def run_driver(symbols_to_features: Dict[str, Dict[str, Any]],
     usage_seq = _expand_usage(profile.get("used_lines", 0), tmax)
 
     budget = LocalBudget(soft_cap=soft_cap, cooldown=cooldown)
-    out_ticks: List[Dict[str, Any]] = []
+    out_ticks: list[dict[str, Any]] = []
     scanned_count = 0
     backoff_ticks = 0
 
@@ -89,7 +94,7 @@ def run_driver(symbols_to_features: Dict[str, Dict[str, Any]],
         if in_backoff:
             backoff_ticks += 1
             # only scan every Nth tick while in backoff
-            do_scan = (i % scan_stride == 0)
+            do_scan = i % scan_stride == 0
         else:
             do_scan = True
 
@@ -97,12 +102,6 @@ def run_driver(symbols_to_features: Dict[str, Dict[str, Any]],
         if do_scan:
             scanned_count += 1
 
-        out_ticks.append({
-            "i": i,
-            "used_lines": used,
-            "backoff": in_backoff,
-            "scanned": do_scan,
-            "run": run
-        })
+        out_ticks.append({"i": i, "used_lines": used, "backoff": in_backoff, "scanned": do_scan, "run": run})
 
     return {"ticks": out_ticks, "scanned_count": scanned_count, "backoff_ticks": backoff_ticks}
