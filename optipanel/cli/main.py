@@ -376,10 +376,6 @@ def main(argv=None):
     p.error("unknown command")
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 def profiles_live_cmd(
     profiles_yaml_text: str,
     provider: str,
@@ -517,3 +513,7 @@ def notify_main(argv=None):
     out = notify_cmd(symbols, iterations=int(args.iterations))
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
