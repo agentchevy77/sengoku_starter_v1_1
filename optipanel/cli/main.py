@@ -278,6 +278,10 @@ def main(argv=None):
     prl.add_argument("--provider", default="mock", choices=["mock", "tws-mock", "tws-live"])
     prl.add_argument("--features-yaml")
     prl.add_argument("--ticks", type=int, default=3)
+    prl.add_argument("--tws-host", default="127.0.0.1")
+    prl.add_argument("--tws-port", type=int, default=7497)
+    prl.add_argument("--client-id", type=int, default=107)
+    prl.add_argument("--ref-symbol", default="SPY")
     pr.add_argument("--profiles-yaml", required=True)
     pr.add_argument("--features-yaml", required=True)
     pr.add_argument("--ticks", type=int, default=3)
@@ -359,6 +363,14 @@ def main(argv=None):
                 getattr(args, "features_yaml", None) or "",
                 "--ticks",
                 str(getattr(args, "ticks", 3)),
+                "--tws-host",
+                getattr(args, "tws_host", "127.0.0.1"),
+                "--tws-port",
+                str(getattr(args, "tws_port", 7497)),
+                "--client-id",
+                str(getattr(args, "client_id", 107)),
+                "--ref-symbol",
+                getattr(args, "ref_symbol", "SPY"),
             ]
         )
     p.error("unknown command")

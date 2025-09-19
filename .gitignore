@@ -17,3 +17,6 @@ logs/
 
 # pre-commit
 .pre-commit-cache/
+
+# Testing artifacts
+.coverage
