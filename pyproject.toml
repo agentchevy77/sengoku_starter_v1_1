@@ -29,7 +29,7 @@ include = ["optipanel*"]
 exclude = ["tests*", "WORKORDERS*", "docs*", "config*"]
 
 [tool.pytest.ini_options]
-addopts = "-q --cov=optipanel --cov-report=term-missing --cov-report=html"
+addopts = "-q --cov=optipanel --cov-report=term-missing --cov-report=html --cov-fail-under=61"
 pythonpath = ["."]
 asyncio_mode = "auto"
 testpaths = ["tests"]
