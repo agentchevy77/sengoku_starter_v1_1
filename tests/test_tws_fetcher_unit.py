@@ -1,4 +1,5 @@
 import dataclasses
+import dataclasses
 from collections import OrderedDict
 from types import SimpleNamespace
 
@@ -144,3 +145,127 @@ def test_pacing_metrics_reports_window(monkeypatch, base_cfg):
         "last_request_latency_sec": 0.123,
         "total_requests": 5,
     }
+
+
+def test_connect_success_sets_last_ok(monkeypatch, base_cfg):
+    clock = FakeClock()
+    clock.now = 100.0
+    monkeypatch.setattr(tws_mod.time, "time", clock.time)
+    monkeypatch.setattr(tws_mod.threading, "Thread", DummyThread)
+
+    created = {}
+
+    def hist_factory():
+        app = DummyApp(True)
+        created["app"] = app
+        return app
+
+    monkeypatch.setattr(tws_mod, "_HistApp", hist_factory)
+
+    fetcher = RealTwsFetcher(base_cfg)
+    app = fetcher._connect()
+
+    assert app is created["app"]
+    assert app.connect_args == (base_cfg.host, base_cfg.port, base_cfg.client_id)
+    assert app.run_called is True
+    assert fetcher._last_ok == pytest.approx(100.0, abs=1e-6)
+    assert fetcher._last_error is None
+    assert app.ready.wait_calls == [base_cfg.handshake_timeout]
+
+
+def test_handshake_test_disconnects(monkeypatch, base_cfg):
+    clock = FakeClock()
+    clock.now = 42.0
+    monkeypatch.setattr(tws_mod.time, "time", clock.time)
+    monkeypatch.setattr(tws_mod.threading, "Thread", DummyThread)
+
+    last = {}
+
+    def factory():
+        app = DummyApp(True)
+        last["app"] = app
+        return app
+
+    monkeypatch.setattr(tws_mod, "_HistApp", factory)
+
+    fetcher = RealTwsFetcher(base_cfg)
+    result = fetcher.handshake_test()
+
+    assert last["app"].disconnect_called is True
+    assert result == {
+        "host": base_cfg.host,
+        "port": base_cfg.port,
+        "client_id": base_cfg.client_id,
+        "handshake": "ok",
+        "errors": [],
+        "last_ok": pytest.approx(42.0, abs=1e-6),
+    }
+
+
+def test_connect_timeout_raises(monkeypatch, base_cfg):
+    clock = FakeClock()
+    clock.now = 5.0
+    monkeypatch.setattr(tws_mod.time, "time", clock.time)
+    monkeypatch.setattr(tws_mod.threading, "Thread", DummyThread)
+
+    container = {}
+
+    def factory():
+        app = DummyApp(False)
+        container["app"] = app
+        return app
+
+    monkeypatch.setattr(tws_mod, "_HistApp", factory)
+
+    fetcher = RealTwsFetcher(base_cfg)
+
+    with pytest.raises(TimeoutError):
+        fetcher._connect()
+
+    assert container["app"].disconnect_called is True
+    assert fetcher._last_ok == 0.0
+    assert "handshake timeout" in fetcher._last_error
+
+
+class DummyReady:
+    def __init__(self, result: bool) -> None:
+        self.result = result
+        self.wait_calls: list[float] = []
+        self.set_called = False
+
+    def wait(self, timeout: float) -> bool:
+        self.wait_calls.append(timeout)
+        return self.result
+
+    def set(self) -> None:
+        self.set_called = True
+
+
+class DummyApp:
+    def __init__(self, ready_result: bool = True) -> None:
+        self.ready = DummyReady(ready_result)
+        self.errors: list[tuple[int, str]] = []
+        self.connect_args: tuple[str, int, int] | None = None
+        self.run_called = False
+        self.disconnect_called = False
+
+    def connect(self, host: str, port: int, clientId: int) -> None:
+        self.connect_args = (host, port, clientId)
+
+    def run(self) -> None:
+        self.run_called = True
+
+    def disconnect(self) -> None:
+        self.disconnect_called = True
+
+
+class DummyThread:
+    def __init__(self, target, name: str, daemon: bool):
+        self.target = target
+        self.name = name
+        self.daemon = daemon
+        self.started = False
+
+    def start(self) -> None:
+        self.started = True
+        self.target()
