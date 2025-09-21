@@ -1,5 +1,6 @@
 import math
 
+from optipanel.chips import micro
 from optipanel.chips.daily import compute_daily_microchips
 from optipanel.chips.h60 import compute_h60_microchips
 from optipanel.chips.m15 import compute_m15_microchips
@@ -154,3 +155,19 @@ def test_compute_daily_microchips_keys():
     assert expected.issubset(micro)
     for value in micro.values():
         assert isinstance(value, int)
+
+
+def test_micro_module_helpers_consistency():
+    micro_m15 = micro.compute_microchips_m15(BULL)
+    micro_h60 = micro.compute_microchips_h60(BULL)
+    micro_daily = micro.compute_microchips_daily(BULL)
+    for block in (micro_m15, micro_h60, micro_daily):
+        assert set(block.keys()) == {
+            "donchian",
+            "trend_dma",
+            "support_def",
+            "res_clear",
+            "rvol",
+            "rs",
+            "vwap",
+        }
