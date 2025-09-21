@@ -1,5 +1,6 @@
 import math
 
+from optipanel.chips.h60 import compute_h60_microchips
 from optipanel.chips.m15 import compute_m15_microchips
 from optipanel.prob.chips import compute_prob_chips
 
@@ -108,6 +109,22 @@ def test_prob_chips_faulty_values():
 
 def test_compute_m15_microchips_keys():
     micro = compute_m15_microchips(BULL)
+    expected = {
+        "donchian",
+        "trend_dma",
+        "support_def",
+        "res_clear",
+        "rvol",
+        "rs",
+        "vwap",
+    }
+    assert expected.issubset(micro)
+    for value in micro.values():
+        assert isinstance(value, int)
+
+
+def test_compute_h60_microchips_keys():
+    micro = compute_h60_microchips(BULL)
     expected = {
         "donchian",
         "trend_dma",

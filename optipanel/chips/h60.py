@@ -1,14 +1,20 @@
-"""60-minute probability chips helper."""
+"""Microchip-driven 60-minute probability chips."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from typing import Any
 
-from optipanel.probs import coerce_features, compute_chips
+from .lib import microchips_from_features, probs_from_microchips
 
 
-def compute_chips_h60(features: Mapping[str, object]) -> dict[str, int]:
-    """Return 60-minute timeframe chips."""
+def compute_h60_microchips(features: dict[str, Any]) -> dict[str, int]:
+    """Return raw microchips for the 60-minute timeframe."""
 
-    bundle = coerce_features(features)
-    return compute_chips(bundle, "60m")
+    return microchips_from_features(features)
+
+
+def compute_chips_h60(features: dict[str, Any]) -> dict[str, int]:
+    """Compute 60-minute probability chips using microchips."""
+
+    micro = microchips_from_features(features)
+    return probs_from_microchips(micro)
