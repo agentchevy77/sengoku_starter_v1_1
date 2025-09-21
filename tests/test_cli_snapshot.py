@@ -22,7 +22,7 @@ BEAR = {
 
 def _check(s):
     assert isinstance(s, dict)
-    for k in ("symbol", "units", "setups", "score", "advice"):
+    for k in ("symbol", "units", "setups", "score", "advice", "battlefield_bundle", "prob_chips"):
         assert k in s
     assert 0 <= s["score"] <= 100
     assert s["advice"] in ("attack", "defend", "standby")

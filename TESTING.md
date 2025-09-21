@@ -12,6 +12,9 @@
 # Run all tests with coverage
 pytest
 
+# Quick fault-injection sweep for malformed bundles
+pytest -k fault -q
+
 # Run specific test file
 pytest tests/test_specific.py
 

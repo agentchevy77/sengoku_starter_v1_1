@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
+
+from optipanel.battlefield.units_v2 import compute_units_v2
 
 # Preferred display order; any extra keys will be appended alphabetically.
 ORDER = ["dma20", "support", "resistance", "rvol", "rs"]
@@ -61,3 +63,9 @@ def render_battlefield(units: dict[str, dict[str, int]], width: int = 20) -> str
         lines.append(f"{k:<10} bull [{_bar(bull, width)}]  bear [{_bar(bear, width)}]")
 
     return "\n".join(lines)
+
+
+def render_battlefield_from_bundle(bundle: Mapping[str, float] | None, width: int = 20) -> str:
+    """Convenience wrapper that renders ASCII bars directly from a feature bundle."""
+    units = compute_units_v2(bundle or {})
+    return render_battlefield(units, width=width)

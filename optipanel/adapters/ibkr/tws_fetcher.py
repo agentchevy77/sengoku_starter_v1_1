@@ -330,7 +330,7 @@ class RealTwsFetcher:
                 sym_ret20 = (last / ago - 1.0) if (ago and ago != 0) else 0.0
                 rs_strength = sym_ret20 - ref_ret20
 
-                out[s] = {
+                base_features = {
                     "last": float(last),
                     "dma20": float(dma20),
                     "support": float(support),
@@ -339,6 +339,8 @@ class RealTwsFetcher:
                     "rs_strength": float(rs_strength),
                     "vwap_diff": 0.0,
                 }
+                out[s] = dict(base_features)
+                out[s]["bundles"] = {"1d": dict(base_features)}
             return out
         finally:
             app.disconnect()

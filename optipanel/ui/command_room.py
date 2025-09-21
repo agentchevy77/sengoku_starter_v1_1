@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from typing import Any
 
-from optipanel.battlefield.ascii import render_battlefield
+from optipanel.battlefield.ascii import render_battlefield, render_battlefield_from_bundle
 
 
 def _find_snap(scan_results: list[dict[str, Any]], symbol: str) -> dict[str, Any] | None:
@@ -11,6 +12,26 @@ def _find_snap(scan_results: list[dict[str, Any]], symbol: str) -> dict[str, Any
         if r.get("symbol") == symbol:
             return r
     return None
+
+
+def _format_chip_block(chips: Mapping[str, Any]) -> str:
+    order = (
+        ("breakout_up", "brkU"),
+        ("breakdown_down", "brkD"),
+        ("bounce_up", "bUp"),
+        ("rejection_down", "rejD"),
+        ("trend_long", "trL"),
+        ("trend_short", "trS"),
+        ("fakeout", "fake"),
+    )
+    parts: list[str] = []
+    for key, label in order:
+        value = chips.get(key)
+        if isinstance(value, int):
+            parts.append(f"{label}:{value:02d}")
+        elif isinstance(value, float | int):
+            parts.append(f"{label}:{int(round(float(value))):02d}")
+    return " ".join(parts)
 
 
 def render_command_room(run_out: dict[str, Any], width: int = 24, top_n: int = 1) -> str:
@@ -45,8 +66,22 @@ def render_command_room(run_out: dict[str, Any], width: int = 24, top_n: int = 1
         score = int(snap.get("score", 0))
         advice = snap.get("advice", "standby")
         lines.append(f"\n[{sym}] score={score} advice={advice}")
-        units = snap.get("units", {})
-        lines.append(render_battlefield(units, width=width))
+        bundle = snap.get("battlefield_bundle")
+        if isinstance(bundle, Mapping):
+            lines.append(render_battlefield_from_bundle(bundle, width=width))
+        else:
+            units = snap.get("units", {})
+            lines.append(render_battlefield(units, width=width))
+
+        chips = snap.get("prob_chips")
+        if isinstance(chips, Mapping) and chips:
+            summary = chips.get("summary")
+            if isinstance(summary, Mapping):
+                lines.append("chips(summary) " + _format_chip_block(summary))
+            for tf in sorted(k for k in chips if k != "summary"):
+                block = chips.get(tf)
+                if isinstance(block, Mapping):
+                    lines.append(f"chips({tf}) " + _format_chip_block(block))
 
     if alerts:
         counts = Counter(a.get("kind", "?") for a in alerts)
