@@ -21,7 +21,7 @@ def test_aggregate_chips_handles_missing_and_clamps():
         "H1": {"breakout_up_prob": -20},
     }
     out = aggregate_chips(chips)
-    assert out["breakout_up_prob"] == 50  # average 120 and -20 -> 50 after clamp
+    assert out["breakout_up_prob"] == 50  # simple mean with equal weights
 
     assert aggregate_chips({}) == {}
 
@@ -32,7 +32,7 @@ def test_recon_score():
         "trend_long_prob": 70,
         "rejection_down_prob": 30,
     }
-    assert recon_score(data) == 45
+    assert recon_score(data) == 60
 
     assert recon_score({}) == 0
 

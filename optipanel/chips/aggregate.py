@@ -1,68 +1,54 @@
-"""Aggregate probability chips across timeframes."""
-
 from __future__ import annotations
 
-from typing import Any
+
+def _clamp(value: float, lo: int = 0, hi: int = 100) -> int:
+    rounded = int(round(value))
+    if rounded < lo:
+        return lo
+    if rounded > hi:
+        return hi
+    return rounded
 
 
 def aggregate_chips(
     chips_by_tf: dict[str, dict[str, int]],
     weights: dict[str, float] | None = None,
 ) -> dict[str, int]:
-    """Weighted-average chips across timeframes."""
+    """Weighted, normalized merge of per-timeframe chips (0..100)."""
 
     if not chips_by_tf:
         return {}
 
-    result: dict[str, int] = {}
-    keys: set[str] = set()
-    for metrics in chips_by_tf.values():
-        keys.update(metrics.keys())
+    all_keys: set[str] = set()
+    for tf_map in chips_by_tf.values():
+        if isinstance(tf_map, dict):
+            all_keys.update(tf_map.keys())
 
-    for key in keys:
+    out: dict[str, int] = {}
+    for key in sorted(all_keys):
         numerator = 0.0
         denom = 0.0
-        for tf, metrics in chips_by_tf.items():
-            if key not in metrics:
+        for tf, chips in chips_by_tf.items():
+            if not isinstance(chips, dict) or key not in chips:
                 continue
-            weight = 1.0
+            w = 1.0
             if weights is not None:
-                weight = float(weights.get(tf, 1.0))
-            if weight <= 0.0:
+                w = float(weights.get(tf, 1.0))
+            if w <= 0.0:
                 continue
-            numerator += float(metrics[key]) * weight
-            denom += weight
+            numerator += w * float(chips[key])
+            denom += w
         if denom > 0.0:
-            value = round(numerator / denom)
-            value = max(0, min(100, int(value)))
-            result[key] = value
-
-    return result
+            out[key] = _clamp(numerator / denom)
+    return out
 
 
-def _values_for_key(out: dict[str, Any], name: str) -> list[int]:
-    values: list[int] = []
-    if name in out:
-        values.append(int(out[name]))
-    prob_key = f"{name}_prob"
-    if prob_key in out:
-        values.append(int(out[prob_key]))
-    return values
+def recon_score(agg: dict[str, int]) -> int:
+    """Scout score: avg(breakout_up, trend_long) - 0.5*rejection_down."""
 
-
-def recon_score(out: dict[str, int]) -> int:
-    """Recon composite: avg(breakout_up, trend_long) - avg(rejection_down)."""
-
-    positives: list[int] = []
-    for key in ("breakout_up", "trend_long"):
-        positives.extend(_values_for_key(out, key))
-    negatives: list[int] = []
-    for key in ("rejection_down",):
-        negatives.extend(_values_for_key(out, key))
-
-    pos_avg = sum(positives) / len(positives) if positives else 0.0
-    neg_avg = sum(negatives) / len(negatives) if negatives else 0.0
-
-    score = pos_avg - neg_avg
-    score = max(0.0, min(100.0, score))
-    return int(round(score))
+    breakout = float(agg.get("breakout_up", agg.get("breakout_up_prob", 0)))
+    trend = float(agg.get("trend_long", agg.get("trend_long_prob", 0)))
+    rejection = float(agg.get("rejection_down", agg.get("rejection_down_prob", 0)))
+    attack = (breakout + trend) / 2.0
+    score = attack - 0.5 * rejection
+    return _clamp(score)
