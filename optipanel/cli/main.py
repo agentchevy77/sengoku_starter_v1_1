@@ -273,6 +273,10 @@ def main(argv=None):
     nt = sub.add_parser("notify", help="Aggregate alerts into a deduped event list")
     nt.add_argument("--symbols-json", required=True)
     nt.add_argument("--iterations", type=int, default=2)
+    rc = sub.add_parser("recon", help="Compute recon chips composite")
+    rc.add_argument("--symbols", required=True)
+    rc.add_argument("--provider", choices=["tws-live", "mock"], default="tws-live")
+    rc.add_argument("--features-yaml")
     prl = sub.add_parser("profiles-live", help="Run profiles with a provider (mock for now)")
     prl.add_argument("--profiles-yaml", required=True)
     prl.add_argument("--provider", default="mock", choices=["mock", "tws-mock", "tws-live"])
@@ -352,6 +356,11 @@ def main(argv=None):
                 str(getattr(args, "iterations", 2)),
             ]
         )
+    if args.cmd == "recon":
+        inner_argv = ["--symbols", args.symbols, "--provider", args.provider]
+        if getattr(args, "features_yaml", None):
+            inner_argv += ["--features-yaml", args.features_yaml]
+        return recon_main(inner_argv)
     if args.cmd == "profiles-live":
         return profiles_live_main(
             [
@@ -512,6 +521,54 @@ def notify_main(argv=None):
     symbols = json.loads(args.symbols_json)
     out = notify_cmd(symbols, iterations=int(args.iterations))
     print(json.dumps(out, indent=2, sort_keys=True))
+    return 0
+
+
+def recon_main(argv=None):
+    import argparse
+    import json
+    from pathlib import Path
+
+    from optipanel.adapters.ibkr import RealTwsFetcher, cfg_from_env
+    from optipanel.chips import compute_chips_daily, compute_chips_h60, compute_chips_m15
+    from optipanel.chips.aggregate import aggregate_chips, recon_score
+    from optipanel.config.loader import parse_features_yaml
+
+    ap = argparse.ArgumentParser(prog="sengoku recon")
+    ap.add_argument("--symbols", required=True, help="Comma-separated symbol list")
+    ap.add_argument("--provider", choices=["tws-live", "mock"], default="tws-live")
+    ap.add_argument("--features-yaml", help="Required when provider=mock")
+    args = ap.parse_args(argv)
+
+    symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+    if not symbols:
+        raise SystemExit("No symbols specified")
+
+    if args.provider == "mock":
+        if not args.features_yaml:
+            raise SystemExit("--features-yaml is required for provider=mock")
+        feats_txt = Path(args.features_yaml).read_text()
+        features = parse_features_yaml(feats_txt)
+    else:
+        fetcher = RealTwsFetcher(cfg_from_env())
+        features = fetcher.features_for_symbols(symbols)
+
+    output: dict[str, dict[str, object]] = {}
+    for sym in symbols:
+        feat = features.get(sym, {}) or {}
+        chips_by_tf = {
+            "D": compute_chips_daily(feat),
+            "H1": compute_chips_h60(feat),
+            "M15": compute_chips_m15(feat),
+        }
+        agg = aggregate_chips(chips_by_tf)
+        output[sym] = {
+            "timeframes": chips_by_tf,
+            "aggregate": agg,
+            "recon": recon_score(agg),
+        }
+
+    print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 
 
