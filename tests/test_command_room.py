@@ -26,6 +26,7 @@ BEAR = {
 
 def test_render_command_room_contains_top_and_bars():
     out = run_once({"AAA": BULL, "BBB": BEAR})
+    assert out.get("panels", {}).get("features_top", {}).get("last") == BULL["last"]
     panel = render_command_room(out, width=20, top_n=1)
     assert "COMMAND ROOM" in panel
     assert "TOP:" in panel
