@@ -34,6 +34,7 @@ def test_render_command_room_contains_top_and_bars():
     assert "dma20" in lower_panel  # legacy units still rendered
     assert "avwap" in lower_panel  # v2 bundle-driven bars present
     assert "chips(" in lower_panel
+    assert "scout     recon" in lower_panel
     assert "advice:" in panel
 
 
@@ -47,3 +48,4 @@ def test_cli_command_room_prints_ascii(capsys):
     out_lower = out.lower()
     assert "command room" in out_lower and "top:" in out_lower
     assert "chips(" in out_lower
+    assert "scout     recon" in out_lower

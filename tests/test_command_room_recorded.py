@@ -126,3 +126,4 @@ def test_command_room_handles_recorded_multi_tf_feed():
     assert "chips(60m)" in lower
     assert "chips(1d)" in lower
     assert "donchian" in lower and "avwap" in lower
+    assert "scout     recon" in lower
