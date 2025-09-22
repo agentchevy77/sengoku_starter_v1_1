@@ -30,3 +30,8 @@ sengoku profiles-live \
 ```
 
 Alternatively set `SENGOKU_TWS_HOST`, `SENGOKU_TWS_PORT`, and `SENGOKU_TWS_CLIENT_ID` env vars and skip the flags.
+
+## Operator cheat-sheet
+
+- [Recon schema reference](docs/RECON_SCHEMA.md) — field-by-field guide to recon JSON payloads.
+- [Recon, alerts & supply toggles](docs/RECON_ALERTS_SUPPLY.md) — how to enable supply/sustain and CLI examples.
