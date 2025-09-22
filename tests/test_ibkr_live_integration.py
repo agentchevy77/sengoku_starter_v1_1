@@ -2,16 +2,14 @@
 Live IBKR TWS Integration Tests
 Run with: IBKR_LIVE=1 pytest tests/test_ibkr_live_integration.py -v
 """
+
 import os
 import time
+
 import pytest
-from unittest.mock import patch
 
 # Only run if explicitly enabled
-pytestmark = pytest.mark.skipif(
-    os.getenv("IBKR_LIVE") != "1",
-    reason="Set IBKR_LIVE=1 to run live IBKR tests"
-)
+pytestmark = pytest.mark.skipif(os.getenv("IBKR_LIVE") != "1", reason="Set IBKR_LIVE=1 to run live IBKR tests")
 
 
 def test_tws_connection_handshake():
@@ -165,8 +163,8 @@ def test_tws_error_handling():
 def test_tws_full_provider_stack():
     """Test the complete provider stack with live data."""
     from optipanel.adapters.ibkr import TwsFeaturesProvider
-    from optipanel.adapters.ibkr.tws_fetcher import RealTwsFetcher, TwsConfig
     from optipanel.adapters.ibkr.translator import tws_translator
+    from optipanel.adapters.ibkr.tws_fetcher import RealTwsFetcher, TwsConfig
     from optipanel.runtime.loop import run_once_with
 
     config = TwsConfig(
@@ -192,8 +190,9 @@ def test_tws_full_provider_stack():
 
 def test_tws_concurrent_requests():
     """Test handling of concurrent symbol requests."""
-    from optipanel.adapters.ibkr.tws_fetcher import RealTwsFetcher, TwsConfig
     import concurrent.futures
+
+    from optipanel.adapters.ibkr.tws_fetcher import RealTwsFetcher, TwsConfig
 
     config = TwsConfig(
         host=os.getenv("SENGOKU_TWS_HOST", "127.0.0.1"),
@@ -208,10 +207,7 @@ def test_tws_concurrent_requests():
         return fetcher.features_for_symbols([symbol])
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [
-            executor.submit(fetch_symbol, symbol)
-            for symbol in ["SPY", "AAPL", "MSFT"]
-        ]
+        futures = [executor.submit(fetch_symbol, symbol) for symbol in ["SPY", "AAPL", "MSFT"]]
 
         results = [f.result() for f in futures]
 
@@ -223,8 +219,7 @@ def test_tws_concurrent_requests():
 
 def test_tws_secret_resolver_integration():
     """Test integration with secret resolver for credentials."""
-    from optipanel.security.secrets import SecretResolver
-    from optipanel.adapters.ibkr.tws_fetcher import cfg_from_env, RealTwsFetcher
+    from optipanel.adapters.ibkr.tws_fetcher import RealTwsFetcher, cfg_from_env
 
     # Test that config can be created from environment
     config = cfg_from_env()

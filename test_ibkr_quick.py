@@ -32,7 +32,7 @@ try:
 
         if "SPY" in features:
             spy_data = features["SPY"]
-            print(f"✓ SPY data received!")
+            print("✓ SPY data received!")
             print(f"  Last: ${spy_data.get('last', 0):.2f}")
             print(f"  DMA20: ${spy_data.get('dma20', 0):.2f}")
             print(f"  Support: ${spy_data.get('support', 0):.2f}")
@@ -60,6 +60,7 @@ except TimeoutError as e:
 except Exception as e:
     print(f"✗ Error: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
 

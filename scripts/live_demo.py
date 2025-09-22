@@ -8,9 +8,9 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
-from typing import Sequence
 
 from optipanel.adapters.ibkr import RealTwsFetcher, cfg_from_env
 from optipanel.monitoring import evaluate_pacing_alerts, load_thresholds_from_env

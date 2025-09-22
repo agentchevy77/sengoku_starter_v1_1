@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import os
-import sys
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import asdict
