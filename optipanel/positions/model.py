@@ -1,9 +1,22 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
 from optipanel.setups.engine import compute_setups
+
+
+def _coerce_price(value: Any) -> float | None:
+    """Return a finite positive price or ``None`` when input is unusable."""
+
+    try:
+        price = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(price) or price <= 0.0:
+        return None
+    return price
 
 
 def default_thresholds() -> dict[str, float]:
@@ -108,7 +121,9 @@ class PositionState:
             if not pos:
                 continue
             f = features.get(sym) or {}
-            last = float(f.get("last", 0.0))
+            last = _coerce_price(f.get("last"))
+            if last is None:
+                continue
             setups = _get_setups(sym, f)
             if self._should_exit(sym, last, setups, th):
                 pnl = (last - pos.avg_px) * pos.qty
@@ -123,8 +138,8 @@ class PositionState:
             if sym in self.positions:
                 continue
             f = features.get(sym) or {}
-            last = float(f.get("last", 0.0)) or 0.0
-            if last <= 0:
+            last = _coerce_price(f.get("last"))
+            if last is None:
                 continue
             setups = _get_setups(sym, f)
             if self._should_enter_long(sym, setups, th):
@@ -143,7 +158,12 @@ class PositionState:
                 self.open_trades.append(Trade(sym, "long", qty, last))
                 actions.append(f"BUY {sym} x{qty} @ {last:.2f}")
 
-        equity = self.cash + sum(p.qty * float(features.get(s, {}).get("last", 0.0)) for s, p in self.positions.items())
+        equity = self.cash
+        for sym, pos in self.positions.items():
+            last = _coerce_price(features.get(sym, {}).get("last"))
+            if last is None:
+                continue
+            equity += pos.qty * last
         return {
             "i": self.tick_index,
             "cash": round(self.cash, 2),

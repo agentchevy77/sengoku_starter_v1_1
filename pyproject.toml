@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "optipanel-sengoku"
-version = "0.1.1"
+version = "0.7.0"
 description = "Sengoku Decision Cockpit — starter scaffold (memory-safe)"
 requires-python = ">=3.11"
 dependencies = [
@@ -70,6 +70,10 @@ namespace_packages = true
 explicit_package_bases = true
 strict_equality = true
 ignore_missing_imports = false
+# Enable stricter checking for new code
+check_untyped_defs = false  # Set to true for stricter checking
+disallow_untyped_calls = false  # Set to true for stricter checking
+disallow_untyped_defs = false  # Set to true for stricter checking
 
 [[tool.mypy.overrides]]
 module = ["ibapi.*", "yaml"]

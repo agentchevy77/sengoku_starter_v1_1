@@ -1,4 +1,5 @@
 import dataclasses
+import json
 from collections import OrderedDict
 from types import SimpleNamespace
 
@@ -42,6 +43,8 @@ def base_cfg() -> TwsConfig:
         pacing_max_requests=2,
         pacing_min_delay_sec=1.0,
         pacing_error_delay_sec=0.0,
+        global_rate_max_requests=5,
+        global_rate_interval_sec=10.0,
     )
 
 
@@ -93,6 +96,42 @@ def test_pace_request_applies_window_limit(monkeypatch, base_cfg):
     assert len(fetcher._request_window) <= base_cfg.pacing_max_requests
 
 
+def test_pace_request_uses_global_rate_limiter(monkeypatch, base_cfg):
+    cfg = dataclasses.replace(
+        base_cfg,
+        pacing_min_delay_sec=0.0,
+        pacing_interval_sec=0.0,
+        pacing_max_requests=0,
+    )
+    fetcher = RealTwsFetcher(cfg)
+
+    class DummyLimiter:
+        def __init__(self, wait: float) -> None:
+            self.enabled = True
+            self.wait = wait
+            self.calls = 0
+
+        def acquire(self, tokens: float = 1.0) -> float:
+            self.calls += 1
+            return self.wait
+
+    dummy = DummyLimiter(wait=0.5)
+    fetcher._global_rate_limiter = dummy  # type: ignore[assignment]
+    fetcher._rate_wait_total = 1.0
+    fetcher._rate_wait_last = 0.0
+
+    clock = FakeClock()
+    clock.now = 0.0
+    monkeypatch.setattr(tws_mod.time, "time", clock.time)
+    monkeypatch.setattr(tws_mod.time, "sleep", clock.sleep)
+
+    fetcher._pace_request()
+
+    assert dummy.calls == 1
+    assert fetcher._rate_wait_last == pytest.approx(0.5)
+    assert fetcher._rate_wait_total == pytest.approx(1.5)
+
+
 def test_get_cached_refreshes_and_respects_ttl(monkeypatch):
     cfg = TwsConfig(dynamic_ttl=False, daily_ttl_sec=10.0)
     fetcher = RealTwsFetcher(cfg)
@@ -136,6 +175,9 @@ def test_pacing_metrics_reports_window(monkeypatch, base_cfg):
     fetcher._request_window.extend([1.0, 2.0])
     fetcher._last_latency = 0.123
     fetcher._fresh_requests = 5
+    fetcher._rate_wait_last = 0.5
+    fetcher._rate_wait_total = 2.0
+    fetcher._rate_wait_events.clear()
 
     metrics = fetcher.pacing_metrics()
     assert metrics == {
@@ -143,6 +185,11 @@ def test_pacing_metrics_reports_window(monkeypatch, base_cfg):
         "window_interval_sec": base_cfg.pacing_interval_sec,
         "last_request_latency_sec": 0.123,
         "total_requests": 5,
+        "global_rate_max_requests": base_cfg.global_rate_max_requests,
+        "global_rate_interval_sec": base_cfg.global_rate_interval_sec,
+        "global_rate_last_wait_sec": 0.5,
+        "global_rate_total_wait_sec": 2.0,
+        "global_rate_wait_ratio": pytest.approx(2.0 / base_cfg.global_rate_interval_sec),
     }
 
 
@@ -226,6 +273,27 @@ def test_connect_timeout_raises(monkeypatch, base_cfg):
     assert "handshake timeout" in fetcher._last_error
 
 
+def test_hist_app_collects_bars_even_with_late_updates():
+    app = tws_mod._HistApp()
+
+    bar1 = SimpleNamespace(date="20240101", open=1.0, high=1.5, low=0.9, close=1.4, volume=100)
+    bar2 = SimpleNamespace(date="20240102", open=1.4, high=1.6, low=1.2, close=1.5, volume=120)
+
+    app.historicalData(10, bar1)
+    app.historicalDataEnd(10, "", "")
+    app.historicalData(10, bar2)  # simulate late bar after completion
+
+    bars = app.take_bars(10)
+    assert bars == [
+        ("20240101", 1.0, 1.5, 0.9, 1.4, 100),
+        ("20240102", 1.4, 1.6, 1.2, 1.5, 120),
+    ]
+
+    app.release(10)
+    assert app._bars.get(10) is None
+    assert app._results.get(10) is None
+
+
 class DummyReady:
     def __init__(self, result: bool) -> None:
         self.result = result
@@ -268,3 +336,15 @@ class DummyThread:
     def start(self) -> None:
         self.started = True
         self.target()
+
+
+def test_cfg_from_env_uses_secret_resolver(tmp_path, monkeypatch):
+    secrets_path = tmp_path / "secrets.json"
+    secrets_path.write_text(json.dumps({"SENGOKU_TWS_HOST": "192.168.0.1", "SENGOKU_TWS_PORT": 4100}))
+
+    monkeypatch.setenv("SENGOKU_SECRETS_SOURCE", "file")
+    monkeypatch.setenv("SENGOKU_SECRETS_FILE", str(secrets_path))
+
+    cfg = tws_mod.cfg_from_env()
+    assert cfg.host == "192.168.0.1"
+    assert cfg.port == 4100

@@ -87,3 +87,52 @@ def test_zero_capacity_cache_ignores_writes(monkeypatch):
     cache.set("noop", "value")
     assert cache.size() == 0
     assert cache.get("noop") is None
+
+
+def test_repeated_updates_do_not_bloat_heap(monkeypatch):
+    _patch_clock(monkeypatch)
+    cache = TTLCache(max_items=10, default_ttl_sec=120)
+
+    for i in range(50):
+        cache.set("symbol", i, ttl=60)
+
+    assert cache.size() == 1
+    assert cache.get("symbol") == 49
+    assert len(cache._heap) <= 8  # internal structure stays compact
+
+
+def test_hit_miss_metrics(monkeypatch):
+    clock = _patch_clock(monkeypatch)
+    cache = TTLCache(max_items=3, default_ttl_sec=10)
+
+    cache.set("a", 1, ttl=5)
+    assert cache.get("a") == 1
+
+    clock.advance(6)
+    assert cache.get("a") is None
+    assert cache.get("missing") is None
+
+    stats = cache.stats()
+    assert stats["hits"] == 1
+    assert stats["misses"] == 2
+    assert stats["expired"] == 1
+
+
+def test_heap_compaction_metrics(monkeypatch):
+    _patch_clock(monkeypatch)
+    cache = TTLCache(
+        max_items=6,
+        default_ttl_sec=60,
+        heap_compaction_factor=0.0,
+        heap_compaction_slack=1,
+    )
+
+    cache.set("anchor_a", 1, ttl=40)
+    cache.set("anchor_b", 2, ttl=40)
+
+    for i in range(6):
+        cache.set("key", i, ttl=40)
+
+    stats = cache.stats()
+    assert stats["heap_compactions"] >= 1
+    assert stats["tombstone_ratio"] == 0.0

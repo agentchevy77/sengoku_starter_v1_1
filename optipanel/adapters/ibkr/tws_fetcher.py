@@ -12,6 +12,9 @@ from ibapi.client import EClient
 from ibapi.contract import Contract
 from ibapi.wrapper import EWrapper
 
+from optipanel.security import SecretResolver
+from optipanel.services.ratelimit import RateLimiter
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,24 +44,31 @@ class TwsConfig:
     pacing_min_delay_sec: float = float(os.getenv("SENGOKU_TWS_PACING_MIN_DELAY", "0.2"))
     pacing_error_delay_sec: float = float(os.getenv("SENGOKU_TWS_PACING_ERROR_DELAY", "2.0"))
 
+    # global rate limiting
+    global_rate_max_requests: int = int(os.getenv("SENGOKU_TWS_GLOBAL_MAX_REQS", "120"))
+    global_rate_interval_sec: float = float(os.getenv("SENGOKU_TWS_GLOBAL_INTERVAL", "60.0"))
 
-def cfg_from_env() -> TwsConfig:
+
+def cfg_from_env(resolver: SecretResolver | None = None) -> TwsConfig:
+    resolver = resolver or SecretResolver.from_environment()
     return TwsConfig(
-        host=os.getenv("SENGOKU_TWS_HOST", "127.0.0.1"),
-        port=int(os.getenv("SENGOKU_TWS_PORT", "7496")),
-        client_id=int(os.getenv("SENGOKU_TWS_CLIENT_ID", "107")),
-        ref_symbol=os.getenv("SENGOKU_TWS_REF", "SPY"),
-        handshake_timeout=float(os.getenv("SENGOKU_TWS_HANDSHAKE", "7.0")),
-        hist_timeout=float(os.getenv("SENGOKU_TWS_HIST_TIMEOUT", "15.0")),
-        daily_ttl_sec=float(os.getenv("SENGOKU_TWS_DAILY_TTL", str(23 * 60 * 60))),
-        intraday_ttl_sec=float(os.getenv("SENGOKU_TWS_INTRADAY_TTL", "300")),
-        dynamic_ttl=bool(int(os.getenv("SENGOKU_TWS_DYNAMIC_TTL", "1"))),
-        stale_ok_sec=float(os.getenv("SENGOKU_TWS_STALE_OK", "900")),
-        daily_max_entries=int(os.getenv("SENGOKU_TWS_DAILY_MAX_ENTRIES", "100")),
-        pacing_interval_sec=float(os.getenv("SENGOKU_TWS_PACING_INTERVAL", "5.0")),
-        pacing_max_requests=int(os.getenv("SENGOKU_TWS_PACING_MAX_REQS", "40")),
-        pacing_min_delay_sec=float(os.getenv("SENGOKU_TWS_PACING_MIN_DELAY", "0.2")),
-        pacing_error_delay_sec=float(os.getenv("SENGOKU_TWS_PACING_ERROR_DELAY", "2.0")),
+        host=resolver.get_str("SENGOKU_TWS_HOST", default="127.0.0.1") or "127.0.0.1",
+        port=resolver.get_int("SENGOKU_TWS_PORT", default=7496) or 7496,
+        client_id=resolver.get_int("SENGOKU_TWS_CLIENT_ID", default=107) or 107,
+        ref_symbol=resolver.get_str("SENGOKU_TWS_REF", default="SPY"),
+        handshake_timeout=resolver.get_float("SENGOKU_TWS_HANDSHAKE", default=7.0) or 7.0,
+        hist_timeout=resolver.get_float("SENGOKU_TWS_HIST_TIMEOUT", default=15.0) or 15.0,
+        daily_ttl_sec=resolver.get_float("SENGOKU_TWS_DAILY_TTL", default=float(23 * 60 * 60)) or float(23 * 60 * 60),
+        intraday_ttl_sec=resolver.get_float("SENGOKU_TWS_INTRADAY_TTL", default=300.0) or 300.0,
+        dynamic_ttl=resolver.get_bool("SENGOKU_TWS_DYNAMIC_TTL", default=True),
+        stale_ok_sec=resolver.get_float("SENGOKU_TWS_STALE_OK", default=900.0) or 900.0,
+        daily_max_entries=resolver.get_int("SENGOKU_TWS_DAILY_MAX_ENTRIES", default=100) or 100,
+        pacing_interval_sec=resolver.get_float("SENGOKU_TWS_PACING_INTERVAL", default=5.0) or 5.0,
+        pacing_max_requests=resolver.get_int("SENGOKU_TWS_PACING_MAX_REQS", default=40) or 40,
+        pacing_min_delay_sec=resolver.get_float("SENGOKU_TWS_PACING_MIN_DELAY", default=0.2) or 0.2,
+        pacing_error_delay_sec=resolver.get_float("SENGOKU_TWS_PACING_ERROR_DELAY", default=2.0) or 2.0,
+        global_rate_max_requests=resolver.get_int("SENGOKU_TWS_GLOBAL_MAX_REQS", default=120) or 120,
+        global_rate_interval_sec=resolver.get_float("SENGOKU_TWS_GLOBAL_INTERVAL", default=60.0) or 60.0,
     )
 
 
@@ -84,17 +94,43 @@ class _HistApp(_BaseApp):
         self._bars: dict[int, list[tuple[str, float, float, float, float, int]]] = {}
         self._done: dict[int, threading.Event] = {}
         self._lock = threading.Lock()
+        self._results: dict[int, list[tuple[str, float, float, float, float, int]]] = {}
 
     # ibapi BarData: date, open, high, low, close, volume, average, barCount
     def historicalData(self, reqId, bar):
         with self._lock:
+            if reqId in self._results:
+                # Late-arriving data after completion; escalate to surface potential pacing drift.
+                logger.warning("TWS received late historical bar for req %s after completion", reqId)
+                self._results[reqId].append(
+                    (str(bar.date), float(bar.open), float(bar.high), float(bar.low), float(bar.close), int(bar.volume))
+                )
+                return
             self._bars.setdefault(reqId, []).append(
                 (str(bar.date), float(bar.open), float(bar.high), float(bar.low), float(bar.close), int(bar.volume))
             )
 
     def historicalDataEnd(self, reqId, start, end):
         with self._lock:
+            bars = list(self._bars.pop(reqId, []))
+            self._results[reqId] = bars
             self._done.setdefault(reqId, threading.Event()).set()
+
+    def take_bars(self, reqId: int) -> list[tuple[str, float, float, float, float, int]]:
+        with self._lock:
+            bars = self._results.pop(reqId) if reqId in self._results else list(self._bars.pop(reqId, []))
+            done_evt = self._done.get(reqId)
+            if done_evt is not None and not done_evt.is_set():
+                done_evt.set()
+            return list(bars)
+
+    def release(self, reqId: int) -> None:
+        with self._lock:
+            self._bars.pop(reqId, None)
+            self._results.pop(reqId, None)
+            done_evt = self._done.pop(reqId, None)
+            if done_evt is not None and not done_evt.is_set():
+                done_evt.set()
 
 
 def _stock_contract(symbol: str) -> Contract:
@@ -122,6 +158,17 @@ class RealTwsFetcher:
         self._last_request_ts: float = 0.0
         self._last_latency: float = 0.0
         self._fresh_requests: int = 0
+        self._global_rate_limiter = RateLimiter(
+            max_calls=int(self.cfg.global_rate_max_requests),
+            interval_sec=float(self.cfg.global_rate_interval_sec),
+            name="tws-global",
+        )
+        self._rate_wait_total: float = 0.0
+        self._rate_wait_events: deque[tuple[float, float]] = deque()
+        self._rate_wait_last: float = 0.0
+        self._rate_warn_threshold = max(0.5, float(self.cfg.global_rate_interval_sec) * 0.1)
+        self._rate_warn_interval = max(30.0, float(self.cfg.global_rate_interval_sec))
+        self._rate_warn_last_ts = 0.0
 
     # ---------- time / ttl helpers ----------
     def _current_ttl(self) -> float:
@@ -161,6 +208,29 @@ class RealTwsFetcher:
                     now = time.time()
                     while window and (now - window[0]) > interval:
                         window.popleft()
+
+        if self._global_rate_limiter.enabled:
+            waited = self._global_rate_limiter.acquire()
+            self._rate_wait_last = waited
+            if waited:
+                now = time.time()
+                self._rate_wait_events.append((now, waited))
+                self._rate_wait_total += waited
+                cutoff = now - float(self.cfg.global_rate_interval_sec)
+                while self._rate_wait_events and self._rate_wait_events[0][0] < cutoff:
+                    _, duration = self._rate_wait_events.popleft()
+                    self._rate_wait_total = max(0.0, self._rate_wait_total - duration)
+                if waited >= self._rate_warn_threshold and now - self._rate_warn_last_ts >= self._rate_warn_interval:
+                    logger.warning(
+                        "TWS pacing: global limiter slept %.3fs (total %.3fs / %.1fs, limit=%d)",
+                        waited,
+                        self._rate_wait_total,
+                        self.cfg.global_rate_interval_sec,
+                        self.cfg.global_rate_max_requests,
+                    )
+                    self._rate_warn_last_ts = now
+        else:
+            self._rate_wait_last = 0.0
 
         self._last_request_ts = time.time()
         self._request_window.append(self._last_request_ts)
@@ -251,13 +321,10 @@ class RealTwsFetcher:
                     return stale
                 raise TimeoutError(f"historicalData timeout for {symbol}")
 
-            bars = list(app._bars.get(req_id, []))
+            bars = app.take_bars(req_id)
         finally:
             # Always release per-request registries to avoid unbounded growth in long-lived sessions.
-            app._bars.pop(req_id, None)
-            done_evt = app._done.pop(req_id, None)
-            if done_evt is not None:
-                done_evt.set()
+            app.release(req_id)
 
         # store/update LRU
         self._daily_cache[symbol] = (now, bars)
@@ -355,6 +422,15 @@ class RealTwsFetcher:
             "window_interval_sec": self.cfg.pacing_interval_sec,
             "last_request_latency_sec": self._last_latency,
             "total_requests": self._fresh_requests,
+            "global_rate_max_requests": self.cfg.global_rate_max_requests,
+            "global_rate_interval_sec": self.cfg.global_rate_interval_sec,
+            "global_rate_last_wait_sec": self._rate_wait_last,
+            "global_rate_total_wait_sec": self._rate_wait_total,
+            "global_rate_wait_ratio": (
+                (self._rate_wait_total / self.cfg.global_rate_interval_sec)
+                if self.cfg.global_rate_interval_sec
+                else 0.0
+            ),
         }
 
     # ---------- diagnostics helpers ----------

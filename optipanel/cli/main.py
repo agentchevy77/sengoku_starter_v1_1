@@ -4,8 +4,10 @@ import argparse
 import json
 import logging
 import os
+import sys
 from collections.abc import Mapping
 from contextlib import suppress
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -18,6 +20,7 @@ from optipanel.chips.h60 import compute_microchips_h60
 from optipanel.chips.m15 import compute_microchips_m15
 from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
+from optipanel.monitoring import evaluate_pacing_alerts, load_thresholds_from_env
 from optipanel.readiness.engine import compute_readiness
 from optipanel.recon.enrich import build_recon_entry, enrich_alerts_with_supply_sustain
 
@@ -302,23 +305,31 @@ def alerts_main(argv=None):
     return 0
 
 
-def health_main(argv=None):
+def health_main(*, ping: bool = False) -> int:
     from optipanel.adapters.ibkr import RealTwsFetcher, cfg_from_env
-
-    ap = argparse.ArgumentParser(prog="sengoku health")
-    ap.parse_args(argv)
+    from optipanel.runtime.health import get_ibkr_health, get_runtime_health
 
     fetcher = RealTwsFetcher(cfg_from_env())
-    payload = fetcher.handshake_test()
+    if ping:
+        from contextlib import suppress
 
-    # Attach cache and pacing diagnostics for quick observability.
-    payload["daily_cache_len"] = fetcher.daily_cache_len()
-    payload.setdefault("last_ok", fetcher.last_ok_timestamp())
-    last_error = fetcher.last_error_message()
-    if last_error:
-        payload.setdefault("last_error", last_error)
-    payload["pacing"] = fetcher.pacing_metrics()
+        with suppress(Exception):
+            fetcher.handshake_test()
 
+    ibkr_info = get_ibkr_health(fetcher)
+    pacing_metrics = fetcher.pacing_metrics()
+    ibkr_info["pacing"] = pacing_metrics
+    pacing_overrides = load_thresholds_from_env()
+    pacing_alerts = evaluate_pacing_alerts(
+        pacing_metrics,
+        thresholds=pacing_overrides if pacing_overrides else None,
+    )
+    if pacing_alerts:
+        ibkr_info["pacing_alerts"] = [asdict(a) for a in pacing_alerts]
+    if pacing_overrides:
+        ibkr_info["pacing_thresholds"] = pacing_overrides
+
+    payload = get_runtime_health(extra={"ibkr": ibkr_info})
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
 
@@ -442,7 +453,8 @@ def main(argv=None):
     lp.add_argument("--iterations", type=int, default=2)
     lp.add_argument("--sleep", type=float, default=0.0)
 
-    sub.add_parser("health", help="Diagnose IBKR connectivity and cache state")
+    hp = sub.add_parser("health", help="Diagnose IBKR connectivity and cache state")
+    hp.add_argument("--ping", action="store_true", help="Attempt handshake() to refresh IBKR status")
 
     cr = sub.add_parser("command-room", help="ASCII dashboard panel")
     cr.add_argument("--symbols-json", required=True)
@@ -495,7 +507,7 @@ def main(argv=None):
     if args.cmd == "alerts":
         return alerts_main(["--symbols-json", args.symbols_json])
     if args.cmd == "health":
-        return health_main([])
+        return health_main(ping=getattr(args, "ping", False))
     if args.cmd == "loop":
         return loop_main(
             [

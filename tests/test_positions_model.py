@@ -1,4 +1,4 @@
-from optipanel.positions.model import PositionState, default_thresholds
+from optipanel.positions.model import Position, PositionState, default_thresholds
 
 
 def test_positions_entry_and_exit_basic():
@@ -52,3 +52,49 @@ def test_positions_no_entry_when_price_zero():
     feats = {"AAPL": {"last": 0.0, "dma20": 0.0, "support": 0.0, "resistance": 0.0, "rvol": 1.0, "rs_strength": 1.0}}
     res = state.tick(feats, thresholds=th)
     assert not res["actions"]
+
+
+def test_positions_ignore_nan_or_infinite_prices():
+    state = PositionState(cash=10_000)
+    th = default_thresholds()
+    feats = {
+        "AAPL": {
+            "last": float("nan"),
+            "dma20": 100.0,
+            "support": 90.0,
+            "resistance": 110.0,
+            "rvol": 1.0,
+            "rs_strength": 0.5,
+        }
+    }
+    res = state.tick(feats, thresholds=th)
+    assert res["actions"] == []
+    assert "AAPL" not in state.positions
+
+    feats["AAPL"]["last"] = float("inf")
+    res = state.tick(feats, thresholds=th)
+    assert res["actions"] == []
+
+
+def test_exit_skips_when_price_invalid():
+    state = PositionState(cash=1000)
+    state.positions["AAPL"] = Position("AAPL", 10, 10.0)
+    th = default_thresholds()
+    feats = {
+        "AAPL": {
+            "last": "bad",
+            "dma20": 10.0,
+            "support": 9.0,
+            "resistance": 11.0,
+            "breakdown_down": 100,
+            "trend_short": 100,
+        }
+    }
+
+    res = state.tick(feats, thresholds=th)
+    assert res["actions"] == []
+    assert "AAPL" in state.positions
+
+    feats["AAPL"]["last"] = 8.0
+    res_valid = state.tick(feats, thresholds=th)
+    assert any(act.startswith("EXIT AAPL") for act in res_valid["actions"]) or "AAPL" not in state.positions
