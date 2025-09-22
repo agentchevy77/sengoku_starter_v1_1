@@ -38,6 +38,8 @@ def update_bus(bus: dict[tuple[str, str], dict[str, Any]], alerts: list[dict[str
                 bus[key]["sustainment"] = a["sustainment"]
             if a.get("supply"):
                 bus[key]["supply"] = a["supply"]
+            if a.get("gate"):
+                bus[key]["gate"] = dict(a["gate"])
         else:
             ev["count"] += 1
             ev["last_seen_tick"] = tick_index
@@ -49,6 +51,8 @@ def update_bus(bus: dict[tuple[str, str], dict[str, Any]], alerts: list[dict[str
                 ev["sustainment"] = a["sustainment"]
             if "supply" not in ev and a.get("supply"):
                 ev["supply"] = a["supply"]
+            if "gate" not in ev and a.get("gate"):
+                ev["gate"] = dict(a["gate"])
             # keep the largest magnitude distance from threshold as representative
             try:
                 old_mag = abs(float(ev.get("value", 0)) - float(ev.get("threshold", 0)))

@@ -21,7 +21,11 @@ from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
 from optipanel.monitoring import evaluate_pacing_alerts, load_thresholds_from_env
 from optipanel.readiness.engine import compute_readiness
-from optipanel.recon.enrich import build_recon_entry, enrich_alerts_with_supply_sustain
+from optipanel.recon.enrich import (
+    build_recon_entry,
+    enrich_alerts_with_gate,
+    enrich_alerts_with_supply_sustain,
+)
 
 _LOG_INITIALIZED = False
 
@@ -747,7 +751,15 @@ def profiles_live_main(argv=None):
     return 0
 
 
-def notify_cmd(symbols, iterations: int = 2, *, include_supply: bool = False):
+def notify_cmd(
+    symbols,
+    iterations: int = 2,
+    *,
+    include_supply: bool = False,
+    require_acceptance: bool = False,
+    ready_min: int = 65,
+    armed_floor: int = 50,
+):
     from optipanel.notify.engine import aggregate_alerts
     from optipanel.runtime.loop import run_once
 
@@ -758,12 +770,20 @@ def notify_cmd(symbols, iterations: int = 2, *, include_supply: bool = False):
     for _ in range(iterations):
         run = run_once(symbols)
         alerts = run.get("alerts") if isinstance(run, dict) else None
-        run["alerts"] = enrich_alerts_with_supply_sustain(
+        alerts = enrich_alerts_with_supply_sustain(
             base_snaps,
             alerts,
             include_supply=include_supply,
             include_sustain=True,
         )
+        alerts = enrich_alerts_with_gate(
+            base_snaps,
+            alerts,
+            require_acceptance=require_acceptance,
+            ready_min=ready_min,
+            armed_floor=armed_floor,
+        )
+        run["alerts"] = alerts
         runs.append(run)
     return aggregate_alerts(runs)
 
@@ -773,6 +793,8 @@ def notify_main(argv=None):
     import json
 
     ap = argparse.ArgumentParser(prog="sengoku notify")
+    ap.add_argument("--require-acceptance", action="store_true", help="drop alerts unless gate=go")
+    ap.add_argument("--ready-min", type=int, default=None, help="readiness threshold for gate=go (default 65)")
     ap.add_argument("--symbols-json", required=True)
     ap.add_argument("--iterations", type=int, default=2)
     ap.add_argument(
@@ -783,7 +805,23 @@ def notify_main(argv=None):
     args = ap.parse_args(argv)
     symbols = json.loads(args.symbols_json)
     include_supply = args.include_supply or os.getenv("SENGOKU_NOTIFY_INCLUDE_SUPPLY", "") == "1"
-    out = notify_cmd(symbols, iterations=int(args.iterations), include_supply=include_supply)
+
+    def _env_truth(value: str | None) -> bool:
+        if not value:
+            return False
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    env_accept = os.getenv("SENGOKU_NOTIFY_REQUIRE_ACCEPT")
+    require_acceptance = args.require_acceptance or _env_truth(env_accept)
+    env_ready = os.getenv("SENGOKU_NOTIFY_READY_MIN")
+    ready_min = args.ready_min if args.ready_min is not None else int(env_ready) if env_ready else 65
+    out = notify_cmd(
+        symbols,
+        iterations=int(args.iterations),
+        include_supply=include_supply,
+        require_acceptance=require_acceptance,
+        ready_min=int(ready_min),
+    )
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0
 
