@@ -15,3 +15,8 @@ Each alert may include a `gate` object:
   }
 }
 ```
+
+## CLI toggles & env overrides
+
+- `--require-acceptance` or `SENGOKU_NOTIFY_REQUIRE_ACCEPT=1` drops alerts whose gate state is not `go`.
+- `--ready-min INT` or `SENGOKU_NOTIFY_READY_MIN=65` sets the readiness threshold used for `go` gating.
