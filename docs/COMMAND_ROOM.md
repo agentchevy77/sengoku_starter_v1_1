@@ -1,16 +1,20 @@
-# Command Room Panel
+# Command Room (v0.7)
 
-`optipanel.ui.command_room.render_command_room(run_out, width, top_n)` renders an ASCII snapshot combining battlefield units, recon chips, and new readiness lines. Key sections:
+Order of sections for the top symbol:
+1. Header: `=== COMMAND ROOM (LIVE) ===`
+2. Advice counts + TOP symbol(s)
+3. Battlefield units block (TOTAL + unit bars)
+4. `SCOUT     recon [###]`               // composite recon
+5. `SUSTAIN   sustain=###  fakeout=###`  // sustainment dials
+6. Microchips for top symbol:
+   - `micro M15 ...`
+   - `micro H1  ...`
+   - `micro D1  ...`
+7. SUPPLY narratives:
+   - `SUPPLY   breakout_up  ⇐ donchian_M15, res_clear_M15, rs_H1`
+8. Alerts block with counts by type
 
-- **Header**: session banner, advice counts, TOP list.
-- **Battlefield bars**: TOTAL plus indicator lines (`dma20`, `support`, `resistance`, etc.).
-- **Probability chips**: `chips(summary)` followed by `chips(M15)`, `chips(H1)`, `chips(D)`.
-- **SCOUT**: `SCOUT     recon [###]` headline score.
-- **SUSTAIN**: `SUSTAIN  sustain=###  fakeout=###` continuation vs fakeout dial.
-- **READY**: `READY     atk=###  def=###` — readiness meters derived from the same chips and sustainment.
-- **SCOUT micro rows**: `SCOUT    M15 ...` `SCOUT    H1 ...` `SCOUT    D1 ...` showing structural microchips.
-- **ACCEPT**: `ACCEPT   armed=Y accepted=Y dir=UP` (from acceptance doctrine, when bar data + level present).
-- **SUPPLY**: per-front factor list (`SUPPLY   breakout_up ⇐ rvol_H1, vwap_H1, rs_H1`).
-- **Alerts**: aggregated counts at the bottom if alerts are present.
-
-You can regenerate the golden snapshot used by tests via `samples/command_room_golden.txt` (see `tests/test_command_room_recorded.py`).
+Notes:
+- All numbers are 0..100 ints.
+- Microchips show structural posture; recon uses probability chips.
+- Supply lines explain “why” a setup is strong/weak (provenance).

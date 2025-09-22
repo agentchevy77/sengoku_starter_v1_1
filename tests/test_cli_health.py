@@ -36,7 +36,7 @@ def test_health_main_reports_handshake(monkeypatch, capsys):
     dummy_fetcher = DummyFetcher(dummy_cfg)
     monkeypatch.setattr(ibkr_mod, "RealTwsFetcher", lambda cfg: dummy_fetcher, raising=False)
 
-    rc = health_main([])
+    rc = health_main()
     assert rc == 0
     assert dummy_fetcher._handshake_calls == 0
 
@@ -58,7 +58,7 @@ def test_health_main_includes_last_error(monkeypatch, capsys):
     error_fetcher = ErrorFetcher()
     monkeypatch.setattr(ibkr_mod, "RealTwsFetcher", lambda cfg: error_fetcher, raising=False)
 
-    rc = health_main([])
+    rc = health_main()
     assert rc == 0
 
     data = json.loads(capsys.readouterr().out)
@@ -84,7 +84,7 @@ def test_health_main_emits_pacing_alert(monkeypatch, capsys):
     fetcher = AlertFetcher()
     monkeypatch.setattr(ibkr_mod, "RealTwsFetcher", lambda cfg: fetcher, raising=False)
 
-    rc = health_main([])
+    rc = health_main()
     assert rc == 0
 
     data = json.loads(capsys.readouterr().out)
@@ -117,7 +117,7 @@ def test_health_main_threshold_overrides_disable_alerts(monkeypatch, capsys):
     fetcher = QuietFetcher()
     monkeypatch.setattr(ibkr_mod, "RealTwsFetcher", lambda cfg: fetcher, raising=False)
 
-    rc = health_main([])
+    rc = health_main()
     assert rc == 0
 
     data = json.loads(capsys.readouterr().out)
@@ -131,7 +131,7 @@ def test_health_main_ping_triggers_handshake(monkeypatch, capsys):
     dummy_fetcher = DummyFetcher(dummy_cfg)
     monkeypatch.setattr(ibkr_mod, "RealTwsFetcher", lambda cfg: dummy_fetcher, raising=False)
 
-    rc = health_main(["--ping"])
+    rc = health_main(ping=True)
     assert rc == 0
     assert dummy_fetcher._handshake_calls == 1
 

@@ -452,6 +452,14 @@ def main(argv=None):
     lp.add_argument("--iterations", type=int, default=2)
     lp.add_argument("--sleep", type=float, default=0.0)
 
+    op = sub.add_parser("ops", help="Run Prime/Secondary scheduling loop")
+    op.add_argument("--profiles-yaml", required=True)
+    op.add_argument("--provider", choices=["tws-live", "mock"], default="tws-live")
+    op.add_argument("--ticks", type=int, default=10)
+    op.add_argument("--sleep", type=float, default=0)
+    op.add_argument("--width", type=int, default=24)
+    op.add_argument("--top-n", type=int, default=2)
+
     hp = sub.add_parser("health", help="Diagnose IBKR connectivity and cache state")
     hp.add_argument("--ping", action="store_true", help="Attempt handshake() to refresh IBKR status")
 
@@ -518,6 +526,26 @@ def main(argv=None):
                 str(args.sleep),
             ]
         )
+    if args.cmd == "ops":
+        from optipanel.adapters.ibkr import MockFeaturesProvider, RealTwsFetcher, cfg_from_env
+        from optipanel.config.loader import parse_profiles_yaml
+        from optipanel.ops.ops_loop import ops_loop
+
+        profiles_text = Path(args.profiles_yaml).read_text(encoding="utf-8")
+        profile = parse_profiles_yaml(profiles_text)
+
+        provider = RealTwsFetcher(cfg_from_env()) if args.provider == "tws-live" else MockFeaturesProvider({})
+
+        ops_loop(
+            provider,
+            profile,
+            ticks=int(args.ticks),
+            sleep=float(args.sleep),
+            width=int(args.width),
+            top_n=int(args.top_n),
+        )
+        print()
+        return 0
     if args.cmd == "command-room":
         return command_room_main(
             [
