@@ -13,6 +13,16 @@ The recon CLI (`sengoku recon`) produces a per-symbol JSON payload. Each top-lev
       "M15": { "breakout_up": 55, "trend_long": 65, "...": "..." }
     },
     "sustainment": { "sustainability": 83, "fakeout_risk": 36 },
+    "readiness": {
+      "attack": 82,
+      "defense": 26,
+      "components": {
+        "attack_core": 74,
+        "defense_core": 28,
+        "sustainability": 83,
+        "fakeout_risk": 36
+      }
+    },
     "supply": { "breakout_up": ["rvol_H1", "vwap_H1"], "trend_long": ["rvol_H1", "rs_H1"] },
     "chips_summary": {
       "D":   { "position": 62, "momentum": 72, "supply": 58 },
@@ -28,7 +38,9 @@ Notes:
 - `agg`: aggregated probability-chip intensities across timeframes.
 - `tf`: raw probability chips per timeframe (`D`, `H1`, `M15`).
 - `sustainment`: continuation vs fakeout readings (0‒100).
+- `readiness`: compact readiness meters with offensive (`attack`) and defensive (`defense`) readiness plus component debug info.
 - `supply` *(optional)*: readiness factors backing each front (enabled via `--include-supply` or `SENGOKU_RECON_SUPPLY_DEFAULT=1`).
 - `chips_summary` *(optional)*: compact position/momentum/supply snapshot per timeframe (enabled via `--json-include chips_summary`).
+
 
 Validation helper: `optipanel.recon.schemas.validate_recon_entry` performs lightweight checks without external dependencies.

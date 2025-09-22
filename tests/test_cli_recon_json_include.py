@@ -42,6 +42,8 @@ def test_recon_json_baseline(tmp_path, capsys):
     assert "chips_summary" not in entry
     sustain = entry.get("sustainment")
     assert sustain and "sustainability" in sustain and "fakeout_risk" in sustain
+    readiness = entry.get("readiness")
+    assert readiness and readiness["attack"] >= 0 and readiness["defense"] >= 0
 
 
 def test_recon_json_include_supply(tmp_path, capsys):
@@ -62,6 +64,7 @@ def test_recon_json_include_supply(tmp_path, capsys):
     assert "supply" in entry and entry["supply"]
     sustain = entry.get("sustainment")
     assert sustain and "sustainability" in sustain and "fakeout_risk" in sustain
+    assert entry.get("readiness", {}).get("attack") is not None
 
 
 def test_recon_json_include_summary(tmp_path, capsys):
@@ -84,6 +87,7 @@ def test_recon_json_include_summary(tmp_path, capsys):
     assert summary and "D" in summary
     sustain = entry.get("sustainment")
     assert sustain
+    assert "readiness" in entry
 
 
 def test_recon_micro_mode_returns_scout_block(tmp_path, capsys):
@@ -156,6 +160,7 @@ def test_recon_pretty_includes_supply_and_acceptance(tmp_path, capsys):
     assert "=== recon aaa" in lower
     assert "scout     recon" in lower
     assert "sustain" in lower and "fakeout" in lower
+    assert "readiness" in lower and "attack=" in lower
     assert "scout    m15" in lower
     assert "supply" in lower and "⇐" in out
     assert "accept" in lower

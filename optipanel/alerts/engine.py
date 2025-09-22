@@ -90,13 +90,17 @@ def analyze_batch_with_supply(
     snapshots: list[dict[str, Any]],
     thresholds: dict[str, int] | None = None,
     include_supply: bool | None = None,
+    include_readiness: bool | None = None,
 ) -> list[dict[str, Any]]:
     base = analyze_batch(snapshots, thresholds)
     if include_supply is None:
         include_supply = os.getenv("SENGOKU_ALERTS_INCLUDE_SUPPLY", "") == "1"
+    if include_readiness is None:
+        include_readiness = os.getenv("SENGOKU_ALERTS_INCLUDE_READINESS", "") == "1"
     return enrich_alerts_with_supply_sustain(
         snapshots,
         base,
         include_supply=include_supply,
         include_sustain=True,
+        include_readiness=include_readiness,
     )

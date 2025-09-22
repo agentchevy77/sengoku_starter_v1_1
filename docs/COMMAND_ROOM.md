@@ -4,9 +4,10 @@
 
 - **Header**: session banner, advice counts, TOP list.
 - **Battlefield bars**: TOTAL plus indicator lines (`dma20`, `support`, `resistance`, etc.).
-- **Probability chips**: `chips(summary)` followed by `chips(15m)`, `chips(60m)`, `chips(1d)`.
+- **Probability chips**: `chips(summary)` followed by `chips(M15)`, `chips(H1)`, `chips(D)`.
 - **SCOUT**: `SCOUT     recon [###]` headline score.
 - **SUSTAIN**: `SUSTAIN  sustain=###  fakeout=###` continuation vs fakeout dial.
+- **READY**: `READY     atk=###  def=###` — readiness meters derived from the same chips and sustainment.
 - **SCOUT micro rows**: `SCOUT    M15 ...` `SCOUT    H1 ...` `SCOUT    D1 ...` showing structural microchips.
 - **ACCEPT**: `ACCEPT   armed=Y accepted=Y dir=UP` (from acceptance doctrine, when bar data + level present).
 - **SUPPLY**: per-front factor list (`SUPPLY   breakout_up ⇐ rvol_H1, vwap_H1, rs_H1`).

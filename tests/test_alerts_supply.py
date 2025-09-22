@@ -64,3 +64,13 @@ def test_enrich_adds_sustainment_and_supply_optin():
 
     assert all("sustainment" in a for a in enriched)
     assert any(a.get("symbol") == "AAA" and a.get("supply") for a in enriched)
+
+
+def test_alerts_include_readiness_when_enabled(monkeypatch):
+    monkeypatch.setenv("SENGOKU_ALERTS_INCLUDE_READINESS", "1")
+    snap = build_symbol_snapshot("AAA", BULL)
+    snap["features"] = dict(BULL)
+    out = analyze_batch_with_supply([snap], thresholds=DEFAULT_THRESH, include_supply=False)
+    assert any("readiness" in alert for alert in out)
+    ready = next(alert["readiness"] for alert in out if "readiness" in alert)
+    assert ready["attack"] >= 0 and ready["defense"] >= 0

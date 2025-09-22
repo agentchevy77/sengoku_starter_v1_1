@@ -22,6 +22,8 @@ def test_build_recon_entry_baseline():
     assert entry["recon"]
     assert "agg" in entry and "tf" in entry
     assert "sustainment" in entry and "supply" not in entry
+    readiness = entry.get("readiness")
+    assert readiness and "attack" in readiness and "defense" in readiness
     assert "tf_scout" not in entry
 
 
@@ -31,6 +33,8 @@ def test_build_recon_entry_with_supply_and_summary():
     assert entry["chips_summary"]
     sustain = entry["sustainment"]
     assert sustain["sustainability"] >= 0 and sustain["fakeout_risk"] >= 0
+    readiness = entry["readiness"]
+    assert readiness["attack"] >= 0 and readiness["defense"] >= 0
 
 
 def test_build_recon_entry_micro_mode_still_prob_canonical():
@@ -38,3 +42,4 @@ def test_build_recon_entry_micro_mode_still_prob_canonical():
     assert entry["tf"]
     assert entry.get("tf_scout")
     assert entry["recon"] > 0
+    assert "readiness" in entry

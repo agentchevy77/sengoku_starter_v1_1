@@ -12,6 +12,7 @@ from optipanel.chips.aggregate import (
 )
 from optipanel.chips.compute import compute_chips_by_tf
 from optipanel.chips.runtime import chips_by_tf_for_snapshot
+from optipanel.readiness import compute_readiness
 from optipanel.setups.engine import compute_setups
 
 try:  # prefer shared helper if available
@@ -62,6 +63,7 @@ def enrich_alerts_with_supply_sustain(
     *,
     include_supply: bool = False,
     include_sustain: bool = True,
+    include_readiness: bool = False,
 ) -> list[dict[str, Any]]:
     """Attach sustainment (and optional supply) to alert payloads."""
 
@@ -71,6 +73,7 @@ def enrich_alerts_with_supply_sustain(
     snap_idx = _index_snaps(snaps)
     sustain_cache: dict[str, dict[str, Any]] = {}
     supply_cache: dict[str, dict[str, Any]] = {}
+    readiness_cache: dict[str, dict[str, int]] = {}
     enriched: list[dict[str, Any]] = []
 
     for alert in alerts:
@@ -79,6 +82,7 @@ def enrich_alerts_with_supply_sustain(
         payload = dict(alert)
         sym = payload.get("symbol") or payload.get("sym") or payload.get("ticker")
         snap = snap_idx.get(str(sym)) if isinstance(sym, str) else None
+        prob_tf: dict[str, dict[str, Any]] | None = None
 
         if include_sustain and sym and snap:
             sustain = sustain_cache.get(sym)
@@ -93,6 +97,8 @@ def enrich_alerts_with_supply_sustain(
                     "fakeout_risk": int(sustain.get("fakeout_risk", 50)),
                 },
             )
+        else:
+            sustain = None
 
         if include_supply and sym and snap:
             supply = supply_cache.get(sym)
@@ -106,6 +112,20 @@ def enrich_alerts_with_supply_sustain(
                 supply_cache[sym] = supply
             if supply:
                 payload.setdefault("supply", supply)
+
+        if include_readiness and sym and snap:
+            readiness = readiness_cache.get(sym)
+            if readiness is None:
+                if prob_tf is None:
+                    prob_tf = chips_by_tf_for_snapshot(snap)
+                sustain_src = sustain or compute_sustainment(prob_tf)
+                readiness_data = compute_readiness(prob_tf, sustain_src, acceptance=None)
+                readiness = {
+                    "attack": readiness_data["attack"],
+                    "defense": readiness_data["defense"],
+                }
+                readiness_cache[sym] = readiness
+            payload.setdefault("readiness", readiness)
 
         enriched.append(payload)
 
@@ -123,16 +143,37 @@ def build_recon_entry(
 
     canonical_tf = compute_chips_by_tf(dict(features), mode="prob")
     sustain = compute_sustainment(canonical_tf)
+    agg = aggregate_chips(canonical_tf)
 
     entry: dict[str, Any] = {
-        "recon": sustain.get("recon", recon_score(aggregate_chips(canonical_tf))),
-        "agg": aggregate_chips(canonical_tf),
+        "recon": recon_score(agg),
+        "agg": agg,
         "tf": canonical_tf,
         "mode": mode,
         "sustainment": {
             "sustainability": int(sustain.get("sustainability", 50)),
             "fakeout_risk": int(sustain.get("fakeout_risk", 50)),
         },
+    }
+
+    acceptance = None
+    raw_accept = features.get("acceptance") if isinstance(features, Mapping) else None
+    if isinstance(raw_accept, Mapping):
+        acceptance = {
+            side: {"accepted": bool(data.get("accepted"))}
+            for side, data in raw_accept.items()
+            if isinstance(data, Mapping)
+        }
+
+    readiness_data = compute_readiness(
+        canonical_tf,
+        sustainment=sustain,
+        acceptance=acceptance,
+    )
+    entry["readiness"] = {
+        "attack": readiness_data["attack"],
+        "defense": readiness_data["defense"],
+        "components": readiness_data.get("components", {}),
     }
 
     if mode.lower() == "micro":

@@ -11,6 +11,7 @@ The recon pipeline returns one entry per symbol with canonical fields. Only sust
 - `supply` *(object, optional)* — supply-line factors per front unit.
 - `chips_summary` *(object, optional)* — condensed per-timeframe summary (requires `--json-include chips_summary`).
 - `tf_scout` *(object, optional)* — structural microchip context when requested.
+- `readiness` *(object)* — readiness meters containing `attack`, `defense`, decision `state` (`GO`, `ARM`, `DEF`, `HOLD`), plus `accepted_up`/`accepted_down` flags.
 
 ## Example
 
@@ -42,6 +43,13 @@ The recon pipeline returns one entry per symbol with canonical fields. Only sust
     "sustainment": {
       "sustainability": 83,
       "fakeout_risk": 36
+    },
+    "readiness": {
+      "attack": 82,
+      "defense": 26,
+      "state": "ARM",
+      "accepted_up": false,
+      "accepted_down": false
     },
     "supply": {
       "breakout_up": ["donchian_M15", "rs_H1"],
