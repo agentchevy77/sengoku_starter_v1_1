@@ -56,7 +56,12 @@ def compute_gate_for_snapshot(
     armed_floor: int = 50,
 ) -> dict[str, Any]:
     chips = chips_by_tf_for_snapshot(snap)
-    readiness = int(compute_readiness(chips))
+    sustain = snap.get("sustainment") if isinstance(snap, Mapping) else None
+    acceptance = snap.get("acceptance") if isinstance(snap, Mapping) else None
+    readiness_data = compute_readiness(chips, sustain, acceptance)
+    attack = readiness_data.get("attack", 0)
+    defense = readiness_data.get("defense", 0)
+    readiness = int(max(0, min(100, (attack + defense) / 2)))
 
     verdicts = _acceptance_verdicts_for_snapshot(snap)
     accepted = _accepted_from_verdicts(verdicts)
@@ -76,5 +81,7 @@ def compute_gate_for_snapshot(
             "ready_min": int(ready_min),
             "armed_floor": int(armed_floor),
             "verdicts": verdicts,
+            "attack": attack,
+            "defense": defense,
         },
     }
