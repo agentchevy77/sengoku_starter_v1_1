@@ -104,3 +104,48 @@ def analyze_batch_with_supply(
         include_sustain=True,
         include_readiness=include_readiness,
     )
+
+
+def analyze_batch_with_gate(
+    snaps,
+    thresholds=DEFAULT_THRESH,
+    *,
+    require_acceptance: bool = False,
+    ready_min: int = 65,
+    armed_floor: int = 50,
+    include_supply: bool = False,
+    include_sustain: bool = True,
+):
+    """Wrap analyze_batch to attach gate info (acceptance x readiness) and optionally filter.
+    Also preserves your existing (optional) supply/sustain enrichment path if present."""
+    base = analyze_batch(snaps, thresholds=thresholds)
+    alerts = base.get("alerts", [])
+
+    try:
+        from optipanel.recon.enrich import enrich_alerts_with_supply_sustain
+
+        alerts = enrich_alerts_with_supply_sustain(
+            snaps,
+            alerts,
+            include_supply=bool(include_supply),
+            include_sustain=bool(include_sustain),
+        )
+    except Exception:
+        pass
+
+    try:
+        from optipanel.recon.enrich import enrich_alerts_with_gate
+
+        alerts = enrich_alerts_with_gate(
+            snaps,
+            alerts,
+            require_acceptance=require_acceptance,
+            ready_min=ready_min,
+            armed_floor=armed_floor,
+        )
+    except Exception:
+        pass
+
+    out = dict(base)
+    out["alerts"] = alerts
+    return out
