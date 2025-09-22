@@ -133,12 +133,22 @@ def _render_supply_lines(
     for idx, key in enumerate(order):
         factors = supply.get(key)
         if factors:
-            prefix = "SUPPLY" if idx == 0 else ""
-            lines.append(f"{prefix:<9s}{key:<13s} ⇐ {', '.join(factors)}")
+            if idx == 0:
+                lines.append(f"SUPPLY ⇐ {key}: {', '.join(factors)}")
+            else:
+                lines.append(f"         {key}: {', '.join(factors)}")
     return lines
 
 
 _TF_CANON = {"15m": "M15", "60m": "H1", "1d": "D"}
+
+
+def _clamp_line(text: str, width: int) -> str:
+    if width <= 0 or len(text) <= width:
+        return text
+    if width <= 1:
+        return text[:width]
+    return text[: width - 1] + "…"
 
 
 def _extract_bars(features: Mapping[str, Any] | None):
@@ -185,9 +195,12 @@ def _render_acceptance_line(features: Mapping[str, Any] | None) -> str | None:
     return text
 
 
-def _render_sustainment_line(chips: Mapping[str, Mapping[str, Any]] | None) -> str | None:
+def _render_sustainment_lines(
+    chips: Mapping[str, Mapping[str, Any]] | None,
+    width: int,
+) -> list[str]:
     if not isinstance(chips, Mapping):
-        return None
+        return []
     canon: dict[str, dict[str, int]] = {}
     for tf, block in chips.items():
         if tf == "summary" or not isinstance(block, Mapping):
@@ -195,9 +208,15 @@ def _render_sustainment_line(chips: Mapping[str, Mapping[str, Any]] | None) -> s
         key = _TF_CANON.get(str(tf).lower()) or str(tf).upper()
         canon[key] = {k: int(round(float(block[k]))) for k in block if isinstance(block[k], float | int)}
     if not canon:
-        return None
+        return []
     sustain = compute_sustainment(canon)
-    return f"SUSTAIN  sustain={sustain['sustainability']:3d}  fakeout={sustain['fakeout_risk']:3d}"
+    combined = f"SUSTAIN  sustain={sustain['sustainability']:3d} " f"fakeout={sustain['fakeout_risk']:3d}"
+    if len(combined) <= width or width <= 0:
+        return [combined]
+    return [
+        f"SUSTAIN  sustain={sustain['sustainability']:3d}",
+        f"         fakeout={sustain['fakeout_risk']:3d}",
+    ]
 
 
 def render_command_room(run_out: dict[str, Any], width: int = 24, top_n: int = 1) -> str:
@@ -208,13 +227,17 @@ def render_command_room(run_out: dict[str, Any], width: int = 24, top_n: int = 1
     top = list(scan.get("top", []))[: max(1, int(top_n))]
 
     lines: list[str] = []
-    lines.append("=== COMMAND ROOM (LIVE) ===")
-    lines.append(
+
+    def _add(text: str) -> None:
+        lines.append(_clamp_line(text, width))
+
+    _add("=== COMMAND ROOM (LIVE) ===")
+    _add(
         f"advice: attack={advice_counts.get('attack',0)} "
         f"defend={advice_counts.get('defend',0)} "
         f"standby={advice_counts.get('standby',0)}"
     )
-    lines.append("TOP: " + (", ".join(top) if top else "-"))
+    _add("TOP: " + (", ".join(top) if top else "-"))
 
     for sym in top:
         snap = _find_snap(results, sym)
@@ -222,48 +245,52 @@ def render_command_room(run_out: dict[str, Any], width: int = 24, top_n: int = 1
             continue
         score = int(snap.get("score", 0))
         advice = snap.get("advice", "standby")
-        lines.append(f"\n[{sym}] score={score} advice={advice}")
+        _add("")
+        _add(f"[{sym}] score={score} advice={advice}")
         bundle = snap.get("battlefield_bundle")
         if isinstance(bundle, Mapping):
-            lines.append(render_battlefield_from_bundle(bundle, width=width))
+            for line in render_battlefield_from_bundle(bundle, width=width).splitlines():
+                _add(line)
         else:
             units = snap.get("units", {})
-            lines.append(render_battlefield(units, width=width))
+            for line in render_battlefield(units, width=width).splitlines():
+                _add(line)
 
         chips = snap.get("prob_chips")
         if isinstance(chips, Mapping) and chips:
             summary = snap.get("prob_summary")
             if isinstance(summary, Mapping):
-                lines.append("chips(summary) " + _format_chip_block(summary))
+                _add("chips(summary) " + _format_chip_block(summary))
             for tf in sorted(chips.keys()):
                 block = chips.get(tf)
                 if isinstance(block, Mapping):
-                    lines.append(f"chips({tf}) " + _format_chip_block(block))
+                    _add(f"chips({tf}) " + _format_chip_block(block))
 
             recon_blocks = dict(chips)
             if recon_blocks:
-                lines.append(_render_recon_line(recon_blocks))
-            sustain_line = _render_sustainment_line(chips)
-            if sustain_line:
-                lines.append(sustain_line)
+                _add(_render_recon_line(recon_blocks))
+            sustain_lines = _render_sustainment_lines(chips, width)
+            for line in sustain_lines:
+                _add(line)
 
         features = snap.get("features") if isinstance(snap, Mapping) else None
         micro_rows, micro_by_tf = _micro_rows_for_snap(snap)
         for row in micro_rows:
-            lines.append(row)
+            _add(row)
 
         accept_line = _render_acceptance_line(features)
         if accept_line:
-            lines.append(accept_line)
+            _add(accept_line)
 
         supply_lines = _render_supply_lines(snap.get("setups"), micro_by_tf)
         for row in supply_lines:
-            lines.append(row)
+            _add(row)
 
     if alerts:
         counts = Counter(a.get("kind", "?") for a in alerts)
-        lines.append("\nalerts:")
+        _add("")
+        _add("alerts:")
         for kind in sorted(counts.keys()):
-            lines.append(f"  {kind}: {counts[kind]}")
+            _add(f"  {kind}: {counts[kind]}")
 
     return "\n".join(lines)
