@@ -13,6 +13,7 @@ from optipanel.chips.aggregate import (
 from optipanel.chips.compute import compute_chips_by_tf
 from optipanel.chips.runtime import chips_by_tf_for_snapshot
 from optipanel.readiness import compute_readiness
+from optipanel.recon.gating import compute_gate_for_snapshot
 from optipanel.setups.engine import compute_setups
 
 try:  # prefer shared helper if available
@@ -196,3 +197,34 @@ def compute_chips_by_tf_for_features(features: Mapping[str, Any], *, mode: str =
     """Helper to convert raw feature dict into per-timeframe chips."""
 
     return compute_chips_by_tf(dict(features), mode=mode)
+
+
+def enrich_alerts_with_gate(
+    snaps: Iterable[Mapping[str, Any]],
+    alerts: list[dict[str, Any]],
+    *,
+    require_acceptance: bool = False,
+    ready_min: int = 65,
+    armed_floor: int = 50,
+) -> list[dict[str, Any]]:
+    snap_by_sym: dict[str, Mapping[str, Any]] = {}
+    for s in snaps or []:
+        sym = s.get("symbol")
+        if isinstance(sym, str):
+            snap_by_sym[sym] = s
+
+    enriched: list[dict[str, Any]] = []
+    for alert in alerts:
+        sym = alert.get("symbol")
+        snap = snap_by_sym.get(sym, {})
+        gate = compute_gate_for_snapshot(snap, ready_min=ready_min, armed_floor=armed_floor)
+        out = dict(alert)
+        out["gate"] = {
+            "accepted": gate["accepted"],
+            "readiness": gate["readiness"],
+            "state": gate["state"],
+        }
+        if require_acceptance and gate["state"] != "go":
+            continue
+        enriched.append(out)
+    return enriched
