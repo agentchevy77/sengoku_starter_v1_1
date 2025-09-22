@@ -357,6 +357,22 @@ class RealTwsFetcher:
             "total_requests": self._fresh_requests,
         }
 
+    # ---------- diagnostics helpers ----------
+    def daily_cache_len(self) -> int:
+        """Return the current number of cached daily-bar entries."""
+
+        return len(self._daily_cache)
+
+    def last_ok_timestamp(self) -> float:
+        """Expose the last successful handshake/fetch timestamp (epoch seconds)."""
+
+        return self._last_ok
+
+    def last_error_message(self) -> str | None:
+        """Return the last recorded error message (if any)."""
+
+        return self._last_error
+
 
 # Back-compat alias expected by CLI
 RealTwsFetcherConfig = TwsConfig

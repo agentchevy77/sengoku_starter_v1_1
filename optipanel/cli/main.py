@@ -294,6 +294,27 @@ def alerts_main(argv=None):
     return 0
 
 
+def health_main(argv=None):
+    from optipanel.adapters.ibkr import RealTwsFetcher, cfg_from_env
+
+    ap = argparse.ArgumentParser(prog="sengoku health")
+    ap.parse_args(argv)
+
+    fetcher = RealTwsFetcher(cfg_from_env())
+    payload = fetcher.handshake_test()
+
+    # Attach cache and pacing diagnostics for quick observability.
+    payload["daily_cache_len"] = fetcher.daily_cache_len()
+    payload.setdefault("last_ok", fetcher.last_ok_timestamp())
+    last_error = fetcher.last_error_message()
+    if last_error:
+        payload.setdefault("last_error", last_error)
+    payload["pacing"] = fetcher.pacing_metrics()
+
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
 def loop_main(argv=None):
     import time
 
@@ -413,6 +434,8 @@ def main(argv=None):
     lp.add_argument("--iterations", type=int, default=2)
     lp.add_argument("--sleep", type=float, default=0.0)
 
+    sub.add_parser("health", help="Diagnose IBKR connectivity and cache state")
+
     cr = sub.add_parser("command-room", help="ASCII dashboard panel")
     cr.add_argument("--symbols-json", required=True)
     cr.add_argument("--width", type=int, default=24)
@@ -463,6 +486,8 @@ def main(argv=None):
         return scan_main(["--symbols-json", args.symbols_json])
     if args.cmd == "alerts":
         return alerts_main(["--symbols-json", args.symbols_json])
+    if args.cmd == "health":
+        return health_main([])
     if args.cmd == "loop":
         return loop_main(
             [
