@@ -12,8 +12,8 @@ from optipanel.chips.aggregate import (
 )
 from optipanel.chips.compute import compute_chips_by_tf
 from optipanel.chips.runtime import chips_by_tf_for_snapshot
-from optipanel.readiness import compute_readiness
 from optipanel.recon.gating import compute_gate_for_snapshot
+from optipanel.recon.readiness import readiness_from_front_sustain
 from optipanel.setups.engine import compute_setups
 
 try:  # prefer shared helper if available
@@ -101,13 +101,17 @@ def enrich_alerts_with_supply_sustain(
         else:
             sustain = None
 
+        front_units = snap.get("setups") if isinstance(snap, Mapping) else None
+        if not isinstance(front_units, Mapping):
+            feats = snap.get("features_top") or snap.get("features") or {}
+            try:
+                front_units = compute_setups(dict(feats) if isinstance(feats, Mapping) else {})
+            except Exception:
+                front_units = {}
+
         if include_supply and sym and snap:
             supply = supply_cache.get(sym)
             if supply is None:
-                front_units = snap.get("setups")
-                if not isinstance(front_units, Mapping):
-                    feats = snap.get("features_top") or snap.get("features") or {}
-                    front_units = compute_setups(dict(feats) if isinstance(feats, Mapping) else {})
                 micro_by_tf = _micro_for_snapshot(snap)
                 supply = explain_supply(front_units or {}, micro_by_tf) or {}
                 supply_cache[sym] = supply
@@ -120,11 +124,13 @@ def enrich_alerts_with_supply_sustain(
                 if prob_tf is None:
                     prob_tf = chips_by_tf_for_snapshot(snap)
                 sustain_src = sustain or compute_sustainment(prob_tf)
-                readiness_data = compute_readiness(prob_tf, sustain_src, acceptance=None)
-                readiness = {
-                    "attack": readiness_data["attack"],
-                    "defense": readiness_data["defense"],
-                }
+                acceptance_blob = snap.get("acceptance") if isinstance(snap, Mapping) else None
+                acceptance_score = None
+                if isinstance(acceptance_blob, Mapping):
+                    summary = acceptance_blob.get("summary")
+                    if isinstance(summary, Mapping):
+                        acceptance_score = summary.get("score")
+                readiness = readiness_from_front_sustain(front_units, sustain_src, acceptance_score)
                 readiness_cache[sym] = readiness
             payload.setdefault("readiness", readiness)
 
@@ -157,25 +163,14 @@ def build_recon_entry(
         },
     }
 
-    acceptance = None
-    raw_accept = features.get("acceptance") if isinstance(features, Mapping) else None
-    if isinstance(raw_accept, Mapping):
-        acceptance = {
-            side: {"accepted": bool(data.get("accepted"))}
-            for side, data in raw_accept.items()
-            if isinstance(data, Mapping)
-        }
-
-    readiness_data = compute_readiness(
-        canonical_tf,
-        sustainment=sustain,
-        acceptance=acceptance,
-    )
-    entry["readiness"] = {
-        "attack": readiness_data["attack"],
-        "defense": readiness_data["defense"],
-        "components": readiness_data.get("components", {}),
-    }
+    front_units = compute_setups(dict(features))
+    acceptance_score = None
+    if isinstance(features.get("acceptance"), Mapping):
+        summary = features["acceptance"].get("summary")
+        if isinstance(summary, Mapping):
+            acceptance_score = summary.get("score")
+    readiness = readiness_from_front_sustain(front_units, sustain, acceptance_score)
+    entry["readiness"] = readiness
 
     if mode.lower() == "micro":
         entry["tf_scout"] = compute_chips_by_tf(dict(features), mode="micro")

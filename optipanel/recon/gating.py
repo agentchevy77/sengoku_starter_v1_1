@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from optipanel.chips.aggregate import compute_sustainment
 from optipanel.chips.runtime import chips_by_tf_for_snapshot
-from optipanel.readiness.engine import compute_readiness
+from optipanel.recon.readiness import readiness_from_front_sustain
+from optipanel.setups.engine import compute_setups
 
 
 def _accepted_from_verdicts(v: Mapping[str, Any]) -> bool:
@@ -57,8 +59,29 @@ def compute_gate_for_snapshot(
 ) -> dict[str, Any]:
     chips = chips_by_tf_for_snapshot(snap)
     sustain = snap.get("sustainment") if isinstance(snap, Mapping) else None
-    acceptance = snap.get("acceptance") if isinstance(snap, Mapping) else None
-    readiness_data = compute_readiness(chips, sustain, acceptance)
+    if sustain is None:
+        try:
+            sustain = compute_sustainment(chips)
+        except Exception:
+            sustain = None
+    acceptance_summary = snap.get("acceptance") if isinstance(snap, Mapping) else None
+    acceptance_score = None
+    if isinstance(acceptance_summary, Mapping):
+        summary = acceptance_summary.get("summary")
+        if isinstance(summary, Mapping):
+            acceptance_score = summary.get("score")
+    front_units = snap.get("setups") if isinstance(snap, Mapping) else None
+    if not isinstance(front_units, Mapping):
+        feats = snap.get("features_top") or snap.get("features") or {}
+        try:
+            front_units = compute_setups(dict(feats) if isinstance(feats, Mapping) else {})
+        except Exception:
+            front_units = {}
+    readiness_data = readiness_from_front_sustain(
+        front_units,
+        sustain,
+        acceptance=acceptance_score,
+    )
     attack = readiness_data.get("attack", 0)
     defense = readiness_data.get("defense", 0)
     readiness = int(max(0, min(100, (attack + defense) / 2)))

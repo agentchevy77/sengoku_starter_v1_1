@@ -20,12 +20,13 @@ from optipanel.chips.m15 import compute_microchips_m15
 from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
 from optipanel.monitoring import evaluate_pacing_alerts, load_thresholds_from_env
-from optipanel.readiness.engine import compute_readiness
 from optipanel.recon.enrich import (
     build_recon_entry,
     enrich_alerts_with_gate,
     enrich_alerts_with_supply_sustain,
 )
+from optipanel.recon.readiness import readiness_from_front_sustain
+from optipanel.setups.engine import compute_setups
 
 _LOG_INITIALIZED = False
 
@@ -150,7 +151,7 @@ def _render_recon_human(symbol: str, features: Mapping[str, Any], entry: Mapping
         attack = readiness.get("attack")
         defense = readiness.get("defense")
         if attack is not None and defense is not None:
-            lines.append(f"READINESS attack={int(attack):3d}  defense={int(defense):3d}")
+            lines.append(f"READY     🗡{int(attack):3d}  🛡{int(defense):3d}")
 
     tf_map = entry.get("tf") or entry.get("timeframes") or {}
     for label in ("D", "H1", "M15"):
@@ -880,18 +881,21 @@ def recon_main(argv=None):
         )
         chips_by_tf = entry.get("tf", {})
         sustainment = entry.get("sustainment", {})
-        acceptance = feat.get("acceptance") if isinstance(feat, Mapping) else None
-        readiness_data = compute_readiness(chips_by_tf, sustainment, acceptance)
+        front_units = compute_setups(dict(features))
+        acceptance_score = None
+        raw_accept = features.get("acceptance") if isinstance(features, Mapping) else None
+        if isinstance(raw_accept, Mapping):
+            summary = raw_accept.get("summary")
+            if isinstance(summary, Mapping):
+                acceptance_score = summary.get("score")
+        readiness_data = readiness_from_front_sustain(front_units, sustainment, acceptance_score)
         shaped: dict[str, Any] = {
             "timeframes": chips_by_tf,
             "aggregate": entry.get("agg", {}),
             "recon": entry.get("recon", 0),
             "sustainment": sustainment,
             "mode": entry.get("mode", args.mode),
-            "readiness": {
-                "attack": readiness_data["attack"],
-                "defense": readiness_data["defense"],
-            },
+            "readiness": readiness_data,
         }
         if include_summary and entry.get("chips_summary"):
             shaped["chips_summary"] = entry["chips_summary"]
