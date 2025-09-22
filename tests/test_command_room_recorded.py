@@ -57,6 +57,11 @@ RECORDED_FEED = {
                 "vwap_confluence": 0.68,
             },
         },
+        "bars": [
+            {"open": 305.0, "high": 307.8, "low": 304.1, "close": 305.2, "volume": 1600},
+            {"open": 305.4, "high": 309.6, "low": 305.2, "close": 308.8, "volume": 2400},
+            {"open": 308.3, "high": 309.1, "low": 307.2, "close": 308.2, "volume": 1800},
+        ],
     },
     "BETA": {
         "last": 92.8,
@@ -113,17 +118,28 @@ RECORDED_FEED = {
                 "vwap_confluence": 0.36,
             },
         },
+        "bars": [
+            {"open": 97.8, "high": 98.6, "low": 96.9, "close": 97.6, "volume": 1500},
+            {"open": 97.5, "high": 97.6, "low": 92.4, "close": 93.8, "volume": 2100},
+            {"open": 93.9, "high": 94.7, "low": 92.0, "close": 93.4, "volume": 1700},
+        ],
     },
 }
 
 
 def test_command_room_handles_recorded_multi_tf_feed():
     run_out = run_once(RECORDED_FEED)
-    panel = render_command_room(run_out, width=18, top_n=2)
+    panel = render_command_room(run_out, width=24, top_n=2)
     lower = panel.lower()
     assert "chips(summary)" in lower
     assert "chips(15m)" in lower
     assert "chips(60m)" in lower
     assert "chips(1d)" in lower
+    assert "micro m15" in lower
+    assert "micro h1" in lower
+    assert "micro d1" in lower
+    assert "supply" in lower
+    assert "⇐" in panel
+    assert "sustain" in lower and "fakeout" in lower
     assert "donchian" in lower and "avwap" in lower
     assert "scout     recon" in lower

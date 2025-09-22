@@ -4,17 +4,161 @@ import argparse
 import json
 import logging
 import os
+from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
+from optipanel.acceptance.engine import detect_breakout_acceptance
 from optipanel.adapters.ibkr.iface import FeaturesProvider
-from optipanel.alerts.engine import DEFAULT_THRESH, analyze_batch
+from optipanel.alerts.engine import DEFAULT_THRESH, analyze_batch_with_supply
+from optipanel.chips.daily import compute_microchips_daily
+from optipanel.chips.h60 import compute_microchips_h60
+from optipanel.chips.m15 import compute_microchips_m15
 from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
+from optipanel.recon.enrich import build_recon_entry, enrich_alerts_with_supply_sustain
 
 _LOG_INITIALIZED = False
+
+_MICRO_SPECS = (
+    ("M15", "15m", compute_microchips_m15),
+    ("H1", "60m", compute_microchips_h60),
+    ("D1", "1d", compute_microchips_daily),
+)
+
+_PROB_KEYS = (
+    ("breakout_up_prob", "brkU"),
+    ("breakdown_down_prob", "brkD"),
+    ("bounce_up_prob", "bUp"),
+    ("rejection_down_prob", "rejD"),
+    ("trend_long_prob", "trL"),
+    ("trend_short_prob", "trS"),
+)
+
+_SUPPLY_ORDER = (
+    "breakout_up",
+    "trend_long",
+    "breakdown_down",
+    "trend_short",
+    "bounce_up",
+    "rejection_down",
+    "exhaustion",
+)
+
+
+def _select_bundle(features: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    bundles = features.get("bundles") if isinstance(features, Mapping) else None
+    if isinstance(bundles, Mapping):
+        cand = bundles.get(key)
+        if isinstance(cand, Mapping):
+            return cand
+    return features
+
+
+def _format_prob_line(tf: str, block: Mapping[str, Any]) -> str:
+    parts: list[str] = []
+    for key, label in _PROB_KEYS:
+        if key in block:
+            parts.append(f"{label}:{int(block[key]):02d}")
+    return f"PROB     {tf:<3} " + " ".join(parts)
+
+
+def _format_micro_line(tf: str, block: Mapping[str, Any]) -> str:
+    keys = ("donchian", "trend_dma", "support_def", "res_clear", "rvol", "rs", "vwap")
+    parts = [f"{k}:{int(block.get(k, 0)):02d}" for k in keys]
+    return f"SCOUT    {tf:<3} " + " ".join(parts)
+
+
+def _compute_micro_blocks(features: Mapping[str, Any]) -> list[str]:
+    rows: list[str] = []
+    if not isinstance(features, Mapping):
+        return rows
+    for label, bundle_key, func in _MICRO_SPECS:
+        source = _select_bundle(features, bundle_key)
+        try:
+            micro = func(dict(source))
+        except Exception:
+            micro = {}
+        rows.append(_format_micro_line(label, micro))
+    return rows
+
+
+def _extract_bars(features: Mapping[str, Any] | None) -> list[Mapping[str, Any]] | None:
+    if not isinstance(features, Mapping):
+        return None
+    for key in ("bars", "recent_bars", "ohlc"):
+        candidate = features.get(key)
+        if isinstance(candidate, list):
+            return candidate
+    return None
+
+
+def _format_accept_line(features: Mapping[str, Any] | None) -> str | None:
+    bars = _extract_bars(features)
+    if not bars:
+        return None
+    resistance = features.get("resistance") if isinstance(features, Mapping) else None
+    support = features.get("support") if isinstance(features, Mapping) else None
+
+    def to_flag(value: bool) -> str:
+        return "Y" if value else "N"
+
+    candidate = None
+    direction = None
+    if resistance is not None:
+        result = detect_breakout_acceptance(bars, resistance)
+        if result["armed"] and result["debug"].get("direction") == "up":
+            candidate = result
+            direction = "UP"
+    if candidate is None and support is not None:
+        result = detect_breakout_acceptance(bars, support)
+        if result["armed"] and result["debug"].get("direction") == "down":
+            candidate = result
+            direction = "DOWN"
+
+    if candidate is None:
+        return None
+
+    line = f"ACCEPT   armed={to_flag(candidate['armed'])} accepted={to_flag(candidate['accepted'])}"
+    if direction:
+        line += f" dir={direction}"
+    return line
+
+
+def _render_recon_human(symbol: str, features: Mapping[str, Any], entry: Mapping[str, Any]) -> str:
+    lines: list[str] = []
+    lines.append(f"=== RECON {symbol} ===")
+    lines.append(f"SCOUT     recon [{int(entry.get('recon', 0)):3d}]")
+
+    sustain = entry.get("sustainment", {})
+    if isinstance(sustain, Mapping):
+        sustain_val = int(sustain.get("sustainability", 50))
+        fakeout_val = int(sustain.get("fakeout_risk", 50))
+        lines.append(f"SUSTAIN   sustain={sustain_val:3d} fakeout={fakeout_val:3d}")
+
+    tf_map = entry.get("tf", {}) if isinstance(entry, Mapping) else {}
+    for label in ("D", "H1", "M15"):
+        block = tf_map.get(label)
+        if isinstance(block, Mapping):
+            lines.append(_format_prob_line(label, block))
+
+    micro_rows = _compute_micro_blocks(features)
+    lines.extend(micro_rows)
+
+    accept_line = _format_accept_line(features)
+    if accept_line:
+        lines.append(accept_line)
+
+    supply = entry.get("supply") if isinstance(entry, Mapping) else None
+    if isinstance(supply, Mapping):
+        for key in _SUPPLY_ORDER:
+            factors = supply.get(key)
+            if factors:
+                lines.append(f"SUPPLY   {key:<13s} ⇐ {', '.join(factors)}")
+
+    return "\n".join(lines)
 
 
 def setup_logging() -> None:
@@ -65,9 +209,17 @@ def scan_cmd(symbols: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return run_local_scan(symbols)
 
 
-def alerts_cmd(symbols: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def alerts_cmd(
+    symbols: dict[str, dict[str, Any]],
+    *,
+    include_supply: bool = False,
+) -> list[dict[str, Any]]:
     snaps = [build_symbol_snapshot(sym, feats) for sym, feats in symbols.items()]
-    return analyze_batch(snaps, DEFAULT_THRESH)
+    return analyze_batch_with_supply(
+        snaps,
+        DEFAULT_THRESH,
+        include_supply=include_supply,
+    )
 
 
 def loop_cmd(symbols, iterations: int = 2) -> list[dict]:
@@ -129,10 +281,15 @@ def scan_main(argv=None):
 def alerts_main(argv=None):
     ap = argparse.ArgumentParser(prog="sengoku alerts")
     ap.add_argument("--symbols-json", required=True)
+    ap.add_argument(
+        "--include-supply",
+        action="store_true",
+        help="Include supply lines in alert payloads",
+    )
     args = ap.parse_args(argv)
     symbols = json.loads(args.symbols_json)
-    snaps = [build_symbol_snapshot(sym, feats) for sym, feats in symbols.items()]
-    alerts = analyze_batch(snaps, DEFAULT_THRESH)
+    include_supply = args.include_supply or os.getenv("SENGOKU_ALERTS_INCLUDE_SUPPLY", "") == "1"
+    alerts = alerts_cmd(symbols, include_supply=include_supply)
     print(json.dumps(alerts, indent=2, sort_keys=True))
     return 0
 
@@ -277,6 +434,15 @@ def main(argv=None):
     rc.add_argument("--symbols", required=True)
     rc.add_argument("--provider", choices=["tws-live", "mock"], default="tws-live")
     rc.add_argument("--features-yaml")
+    rc.add_argument(
+        "--mode",
+        choices=["prob", "micro"],
+        default="prob",
+        help="Recon lens for chips-by-timeframe",
+    )
+    rc.add_argument("--include-supply", action="store_true")
+    rc.add_argument("--json-include", default="")
+    rc.add_argument("--pretty", action="store_true")
     prl = sub.add_parser("profiles-live", help="Run profiles with a provider (mock for now)")
     prl.add_argument("--profiles-yaml", required=True)
     prl.add_argument("--provider", default="mock", choices=["mock", "tws-mock", "tws-live"])
@@ -360,6 +526,13 @@ def main(argv=None):
         inner_argv = ["--symbols", args.symbols, "--provider", args.provider]
         if getattr(args, "features_yaml", None):
             inner_argv += ["--features-yaml", args.features_yaml]
+        inner_argv += ["--mode", args.mode]
+        if getattr(args, "include_supply", False):
+            inner_argv.append("--include-supply")
+        if getattr(args, "json_include", ""):
+            inner_argv += ["--json-include", args.json_include]
+        if getattr(args, "pretty", False):
+            inner_argv.append("--pretty")
         return recon_main(inner_argv)
     if args.cmd == "profiles-live":
         return profiles_live_main(
@@ -502,11 +675,24 @@ def profiles_live_main(argv=None):
     return 0
 
 
-def notify_cmd(symbols, iterations: int = 2):
+def notify_cmd(symbols, iterations: int = 2, *, include_supply: bool = False):
     from optipanel.notify.engine import aggregate_alerts
     from optipanel.runtime.loop import run_once
 
-    runs = [run_once(symbols) for _ in range(max(1, int(iterations)))]
+    iterations = max(1, int(iterations))
+    base_snaps = [build_symbol_snapshot(sym, feats) for sym, feats in symbols.items()]
+
+    runs = []
+    for _ in range(iterations):
+        run = run_once(symbols)
+        alerts = run.get("alerts") if isinstance(run, dict) else None
+        run["alerts"] = enrich_alerts_with_supply_sustain(
+            base_snaps,
+            alerts,
+            include_supply=include_supply,
+            include_sustain=True,
+        )
+        runs.append(run)
     return aggregate_alerts(runs)
 
 
@@ -517,9 +703,15 @@ def notify_main(argv=None):
     ap = argparse.ArgumentParser(prog="sengoku notify")
     ap.add_argument("--symbols-json", required=True)
     ap.add_argument("--iterations", type=int, default=2)
+    ap.add_argument(
+        "--include-supply",
+        action="store_true",
+        help="Include SUPPLY lines in alert payloads",
+    )
     args = ap.parse_args(argv)
     symbols = json.loads(args.symbols_json)
-    out = notify_cmd(symbols, iterations=int(args.iterations))
+    include_supply = args.include_supply or os.getenv("SENGOKU_NOTIFY_INCLUDE_SUPPLY", "") == "1"
+    out = notify_cmd(symbols, iterations=int(args.iterations), include_supply=include_supply)
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0
 
@@ -530,19 +722,30 @@ def recon_main(argv=None):
     from pathlib import Path
 
     from optipanel.adapters.ibkr import RealTwsFetcher, cfg_from_env
-    from optipanel.chips import compute_chips_daily, compute_chips_h60, compute_chips_m15
-    from optipanel.chips.aggregate import aggregate_chips, recon_score
     from optipanel.config.loader import parse_features_yaml
 
     ap = argparse.ArgumentParser(prog="sengoku recon")
     ap.add_argument("--symbols", required=True, help="Comma-separated symbol list")
     ap.add_argument("--provider", choices=["tws-live", "mock"], default="tws-live")
     ap.add_argument("--features-yaml", help="Required when provider=mock")
+    ap.add_argument(
+        "--mode",
+        choices=["prob", "micro"],
+        default="prob",
+        help="Recon lens for chips-by-timeframe (prob canonical, micro for scout)",
+    )
+    ap.add_argument("--pretty", action="store_true", help="Pretty-print recon view instead of JSON")
+    ap.add_argument("--include-supply", action="store_true", help="Include supply factors in JSON output")
+    ap.add_argument("--json-include", default="", help="Comma list of extras (e.g. chips_summary)")
     args = ap.parse_args(argv)
 
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
     if not symbols:
         raise SystemExit("No symbols specified")
+
+    include_flags = {flag.strip() for flag in (args.json_include or "").split(",") if flag.strip()}
+    include_supply = args.include_supply or os.getenv("SENGOKU_RECON_SUPPLY_DEFAULT", "") == "1"
+    include_summary = "chips_summary" in include_flags
 
     if args.provider == "mock":
         if not args.features_yaml:
@@ -554,21 +757,38 @@ def recon_main(argv=None):
         features = fetcher.features_for_symbols(symbols)
 
     output: dict[str, dict[str, object]] = {}
+    pretty_chunks: list[str] = []
     for sym in symbols:
         feat = features.get(sym, {}) or {}
-        chips_by_tf = {
-            "D": compute_chips_daily(feat),
-            "H1": compute_chips_h60(feat),
-            "M15": compute_chips_m15(feat),
+        if not isinstance(feat, dict):
+            feat = dict(feat)
+        entry = build_recon_entry(
+            feat,
+            mode=args.mode,
+            include_supply=include_supply,
+            include_summary=include_summary,
+        )
+        shaped: dict[str, Any] = {
+            "timeframes": entry.get("tf", {}),
+            "aggregate": entry.get("agg", {}),
+            "recon": entry.get("recon", 0),
+            "sustainment": entry.get("sustainment", {}),
+            "mode": entry.get("mode", args.mode),
         }
-        agg = aggregate_chips(chips_by_tf)
-        output[sym] = {
-            "timeframes": chips_by_tf,
-            "aggregate": agg,
-            "recon": recon_score(agg),
-        }
+        if include_summary and entry.get("chips_summary"):
+            shaped["chips_summary"] = entry["chips_summary"]
+        if include_supply and entry.get("supply"):
+            shaped["supply"] = entry["supply"]
+        if entry.get("tf_scout"):
+            shaped["tf_scout"] = entry["tf_scout"]
+        output[sym] = shaped
+        if args.pretty:
+            pretty_chunks.append(_render_recon_human(sym, feat, shaped))
 
-    print(json.dumps(output, indent=2, sort_keys=True))
+    if args.pretty:
+        print("\n\n".join(pretty_chunks))
+    else:
+        print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 
 

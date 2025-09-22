@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from typing import Any
+
+from optipanel.recon.enrich import enrich_alerts_with_supply_sustain
 
 DEFAULT_THRESH: dict[str, int] = {
     "score_attack": 65,
@@ -81,3 +84,19 @@ def analyze_batch(snapshots: list[dict[str, Any]], thresholds: dict[str, int] | 
     for s in snapshots:
         out.extend(gen_alerts(s, thresholds))
     return out
+
+
+def analyze_batch_with_supply(
+    snapshots: list[dict[str, Any]],
+    thresholds: dict[str, int] | None = None,
+    include_supply: bool | None = None,
+) -> list[dict[str, Any]]:
+    base = analyze_batch(snapshots, thresholds)
+    if include_supply is None:
+        include_supply = os.getenv("SENGOKU_ALERTS_INCLUDE_SUPPLY", "") == "1"
+    return enrich_alerts_with_supply_sustain(
+        snapshots,
+        base,
+        include_supply=include_supply,
+        include_sustain=True,
+    )

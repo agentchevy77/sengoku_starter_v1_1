@@ -39,7 +39,7 @@ class MockFeaturesProvider:
         out: dict[str, dict[str, Any]] = {}
         for sym in symbols:
             src = self._data.get(sym, {})
-            base = {
+            base: dict[str, Any] = {
                 "last": _as_float(src.get("last"), 0.0),
                 "dma20": _as_float(src.get("dma20"), 0.0),
                 "support": _as_float(src.get("support"), 0.0),

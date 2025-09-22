@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from optipanel.battlefield.engine import compute_units
+from optipanel.chips.aggregate import summarize_chips
 from optipanel.prob.chips import compute_prob_chips
 from optipanel.setups.engine import compute_setups
 
@@ -18,7 +19,7 @@ def _bundle_from_features(features: Mapping[str, Any]) -> dict[str, float]:
     bundle: dict[str, float] = {}
     for key, value in features.items():
         try:
-            val = float(value)  # type: ignore[arg-type]
+            val = float(value)
         except (TypeError, ValueError):
             continue
         if math.isnan(val) or math.isinf(val):
@@ -107,7 +108,7 @@ def build_symbol_snapshot(symbol: str, features: dict[str, Any]) -> dict[str, An
     prob_chips_input = tf_bundles or {"1d": primary_bundle or fallback_bundle}
     prob_chips = compute_prob_chips(prob_chips_input)
 
-    return {
+    snapshot = {
         "symbol": symbol,
         "units": units,
         "setups": setups,
@@ -116,3 +117,6 @@ def build_symbol_snapshot(symbol: str, features: dict[str, Any]) -> dict[str, An
         "battlefield_bundle": dict(primary_bundle) if primary_bundle else dict(fallback_bundle),
         "prob_chips": prob_chips,
     }
+    snapshot["prob_summary"] = summarize_chips(prob_chips)
+    snapshot["features"] = dict(features)
+    return snapshot

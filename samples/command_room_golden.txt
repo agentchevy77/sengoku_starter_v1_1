@@ -1,0 +1,67 @@
+=== COMMAND ROOM (LIVE) ===
+advice: attack=1 defend=1 standby=0
+TOP: ALPHA, BETA
+
+[ALPHA] score=100 advice=attack
+TOTAL      bull [####################....]  bear [####....................]
+dma20      bull [####################....]  bear [####....................]
+support    bull [########################]  bear [........................]
+resistance bull [#######.................]  bear [#################.......]
+rvol       bull [########################]  bear [........................]
+rs         bull [#######################.]  bear [#.......................]
+ad         bull [#######################.]  bear [#.......................]
+avwap      bull [##################......]  bear [######..................]
+clv        bull [####################....]  bear [####....................]
+donchian   bull [#####################...]  bear [###.....................]
+obv        bull [########################]  bear [........................]
+chips(summary) 
+chips(15m) brkU:56 brkD:35 bUp:58 rejD:52 trL:74 trS:26 fake:10
+chips(1d) brkU:60 brkD:33 bUp:59 rejD:46 trL:80 trS:20 fake:09
+chips(60m) brkU:50 brkD:38 bUp:53 rejD:52 trL:73 trS:27 fake:13
+chips(summary) brkU:55 brkD:35 bUp:57 rejD:50 trL:76 trS:24 fake:11
+SCOUT     recon [ 40]
+SUSTAIN  sustain= 84  fakeout= 32
+micro M15 donchian  75 | trend_dma  59 | support_def  50 | res_clear  74 | rvol 100 | rs 100 | vwap  68
+micro H1  donchian  72 | trend_dma  69 | support_def  50 | res_clear  54 | rvol 100 | rs 100 | vwap  65
+micro D1  donchian  69 | trend_dma  78 | support_def  50 | res_clear  12 | rvol 100 | rs 100 | vwap  70
+SUPPLY   breakout_up   ⇐ rvol_D1, rs_D1, vwap_D1
+         trend_long    ⇐ rvol_D1, rs_D1, vwap_D1
+         breakdown_down ⇐ rvol_D1
+         trend_short   ⇐ rvol_D1
+         bounce_up     ⇐ rvol_D1, rs_D1, vwap_D1
+         rejection_down ⇐ rvol_D1, res_clear_M15, donchian_M15
+         exhaustion    ⇐ rvol_D1
+
+[BETA] score=15 advice=defend
+TOTAL      bull [########................]  bear [################........]
+dma20      bull [........................]  bear [########################]
+support    bull [#######################.]  bear [#.......................]
+resistance bull [########################]  bear [........................]
+rvol       bull [#####...................]  bear [###################.....]
+rs         bull [###.....................]  bear [#####################...]
+ad         bull [####....................]  bear [####################....]
+avwap      bull [#######.................]  bear [#################.......]
+clv        bull [######..................]  bear [##################......]
+donchian   bull [#####...................]  bear [###################.....]
+obv        bull [###.....................]  bear [#####################...]
+chips(summary) 
+chips(15m) brkU:11 brkD:54 bUp:19 rejD:51 trL:16 trS:84 fake:15
+chips(1d) brkU:13 brkD:55 bUp:21 rejD:53 trL:18 trS:82 fake:14
+chips(60m) brkU:14 brkD:56 bUp:17 rejD:53 trL:21 trS:79 fake:15
+chips(summary) brkU:13 brkD:55 bUp:19 rejD:52 trL:18 trS:82 fake:15
+SCOUT     recon [  0]
+SUSTAIN  sustain= 22  fakeout= 57
+micro M15 donchian  38 | trend_dma  15 | support_def  50 | res_clear   0 | rvol   0 | rs   0 | vwap  25
+micro H1  donchian  40 | trend_dma   2 | support_def  50 | res_clear   0 | rvol  12 | rs   0 | vwap  30
+micro D1  donchian  23 | trend_dma   0 | support_def  50 | res_clear   0 | rvol   5 | rs   0 | vwap  28
+         breakdown_down ⇐ trend_dma_low_D1, rs_low_D1, vwap_low_M15
+         trend_short   ⇐ trend_dma_low_D1, rs_low_D1, vwap_low_M15
+         bounce_up     ⇐ donchian_low_D1
+         rejection_down ⇐ trend_dma_low_D1, rs_low_D1, vwap_low_M15
+
+alerts:
+  breakout_up: 1
+  score_attack: 1
+  score_defend: 1
+  trend_long: 1
+  trend_short: 1

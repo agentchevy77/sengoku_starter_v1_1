@@ -1,5 +1,7 @@
 # WO-SET-01 — Core Setups scoring engine (pure functions)
 
+**Status: COMPLETE**
+
 **Allowed paths (modify only these):**
 - `optipanel/setups/__init__.py`
 - `optipanel/setups/engine.py`

@@ -1,5 +1,7 @@
 # WO-BF-ASCII-01 — ASCII battlefield renderer (pure, no I/O)
 
+**Status: COMPLETE**
+
 **Allowed paths**
 - `optipanel/battlefield/ascii.py`
 - `optipanel/battlefield/__init__.py` (export symbol only)
