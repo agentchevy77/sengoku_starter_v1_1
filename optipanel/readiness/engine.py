@@ -83,8 +83,22 @@ def _accept_bias(acceptance: Mapping[str, Any] | None) -> dict[str, int]:
             return -10
         return 0
 
-    long_state = str((acceptance.get("long") or {}).get("state", "none"))
-    short_state = str((acceptance.get("short") or {}).get("state", "none"))
+    long_node = acceptance.get("long")
+    short_node = acceptance.get("short")
+
+    if isinstance(long_node, Mapping):
+        long_state = str(long_node.get("state", "none"))
+    elif isinstance(long_node, str):
+        long_state = long_node
+    else:
+        long_state = str(long_node or "none")
+
+    if isinstance(short_node, Mapping):
+        short_state = str(short_node.get("state", "none"))
+    elif isinstance(short_node, str):
+        short_state = short_node
+    else:
+        short_state = str(short_node or "none")
 
     bias_long += _bias_for(long_state)
     bias_short += _bias_for(short_state)

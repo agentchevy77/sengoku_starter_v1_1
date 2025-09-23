@@ -63,3 +63,19 @@ def test_readiness_bull_vs_bear():
 
     assert r_bull["attack"] > r_bear["attack"]
     assert r_bear["defense"] > r_bull["defense"]
+
+
+def test_readiness_acceptance_string_nodes():
+    chips = {
+        "D": {"breakout_up_prob": 50, "trend_long_prob": 50, "rejection_down_prob": 20},
+        "H1": {"breakout_up_prob": 40, "trend_long_prob": 40, "rejection_down_prob": 30},
+        "M15": {"breakout_up_prob": 30, "trend_long_prob": 30, "rejection_down_prob": 40},
+    }
+    sustain = {"sustainability": 55, "fakeout_risk": 45}
+    acceptance = {"long": "confirmed", "short": "rejected"}
+
+    readiness = compute_readiness(chips, sustain, acceptance)
+
+    assert readiness["attack"] >= readiness["defense"]
+    assert readiness["components"]["accept_bias"]["long"] > 0
+    assert readiness["components"]["accept_bias"]["short"] < 0

@@ -5,11 +5,27 @@ import os
 import threading
 import time
 from collections import OrderedDict, deque
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
 from ibapi.client import EClient
 from ibapi.contract import Contract
+
+try:
+    from optipanel.obs.metrics import record, timer
+except Exception:  # pragma: no cover
+
+    def record(name: str, inc: int = 1) -> None:
+        pass
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def timer(name: str):
+        yield
+
+
 from ibapi.wrapper import EWrapper
 
 from optipanel.security import SecretResolver
@@ -81,6 +97,10 @@ class _BaseApp(EWrapper, EClient):
         self.errors: list[tuple[int, str]] = []
 
     def error(self, reqId, code, msg, advancedOrderRejectJson=""):
+        from contextlib import suppress
+
+        with suppress(Exception):
+            record(f"ibkr.error.{code}")
         if code not in self._NON_FATAL:
             self.errors.append((code, str(msg)))
 
@@ -95,6 +115,22 @@ class _HistApp(_BaseApp):
         self._done: dict[int, threading.Event] = {}
         self._lock = threading.Lock()
         self._results: dict[int, list[tuple[str, float, float, float, float, int]]] = {}
+
+    # ---- request bookkeeping -------------------------------------------------
+    def register_request(self, req_id: int) -> threading.Event:
+        evt = threading.Event()
+        with self._lock:
+            self._done[req_id] = evt
+            # ensure containers exist so data handlers can append without key checks
+            self._bars.setdefault(req_id, [])
+        return evt
+
+    def wait_for(self, req_id: int, timeout: float) -> bool:
+        with self._lock:
+            evt = self._done.get(req_id)
+        if evt is None:
+            return False
+        return evt.wait(timeout)
 
     # ibapi BarData: date, open, high, low, close, volume, average, barCount
     def historicalData(self, reqId, bar):
@@ -114,7 +150,11 @@ class _HistApp(_BaseApp):
         with self._lock:
             bars = list(self._bars.pop(reqId, []))
             self._results[reqId] = bars
-            self._done.setdefault(reqId, threading.Event()).set()
+            evt = self._done.get(reqId)
+            if evt is None:
+                evt = threading.Event()
+                self._done[reqId] = evt
+            evt.set()
 
     def take_bars(self, reqId: int) -> list[tuple[str, float, float, float, float, int]]:
         with self._lock:
@@ -238,16 +278,28 @@ class RealTwsFetcher:
 
     # ---------- connectivity ----------
     def _connect(self) -> _HistApp:
-        app = _HistApp()
-        app.connect(self.cfg.host, self.cfg.port, clientId=self.cfg.client_id)
-        t = threading.Thread(target=app.run, name="tws-run", daemon=True)
-        t.start()
-        if not app.ready.wait(self.cfg.handshake_timeout):
-            app.disconnect()
-            self._last_error = f"handshake timeout host={self.cfg.host} port={self.cfg.port} id={self.cfg.client_id}"
-            raise TimeoutError(self._last_error)
-        self._last_ok = time.time()
-        self._last_error = None
+        record("ibkr.connect.attempts")
+        with timer("ibkr.handshake.ms"):
+            app = _HistApp()
+            try:
+                app.connect(self.cfg.host, self.cfg.port, clientId=self.cfg.client_id)
+                t = threading.Thread(target=app.run, name="tws-run", daemon=True)
+                t.start()
+                if not app.ready.wait(self.cfg.handshake_timeout):
+                    app.disconnect()
+                    self._last_error = (
+                        f"handshake timeout host={self.cfg.host} port={self.cfg.port} id={self.cfg.client_id}"
+                    )
+                    raise TimeoutError(self._last_error)
+                self._last_ok = time.time()
+                self._last_error = None
+            except Exception:
+                # Clean up connection and thread on any exception
+                with suppress(Exception):
+                    app.disconnect()
+                record("ibkr.connect.fail")
+                raise
+        record("ibkr.connect.ok")
         return app
 
     def handshake_test(self) -> dict[str, Any]:
@@ -299,7 +351,7 @@ class RealTwsFetcher:
             return cached
 
         req_id = self._next_id()
-        app._done[req_id] = threading.Event()
+        wait_evt = app.register_request(req_id)
         app.reqHistoricalData(
             req_id,
             _stock_contract(symbol),
@@ -314,7 +366,7 @@ class RealTwsFetcher:
         )
 
         try:
-            if not app._done[req_id].wait(self.cfg.hist_timeout):
+            if not wait_evt.wait(self.cfg.hist_timeout):
                 # try stale fallback
                 stale = self._get_cached(symbol, now, allow_stale=True)
                 if stale is not None:

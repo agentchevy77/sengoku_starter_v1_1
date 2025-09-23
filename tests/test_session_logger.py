@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 import pytest
 
@@ -13,7 +14,7 @@ from optipanel.ops.session_logger import (
     ensure_safe_logger,
     get_session_logger,
 )
-from optipanel.ops.session_logger_safe import SafeSessionLogger
+from optipanel.ops.session_logger_safe import SafeLogRotationManager, SafeSessionLogger
 
 
 @pytest.fixture
@@ -374,3 +375,49 @@ class TestEnsureSafeLogger:
     def test_rejects_foreign_logger(self):
         with pytest.raises(RuntimeError):
             ensure_safe_logger(object(), where="unit-test")
+
+
+class TestSafeSessionLoggerBehaviour:
+    """Additional coverage for SafeSessionLogger internals."""
+
+    def test_finalize_emits_session_summary(self, temp_log_dir, monkeypatch):
+        monkeypatch.setenv("SENGOKU_LOG_DIR", str(temp_log_dir))
+        logger = SafeSessionLogger(log_dir=str(temp_log_dir), command="finalize_test")
+        with logger.operation_context("work", task="demo"):
+            logger.emit_metric("units_processed", 3, unit="count")
+
+        logger.finalize(status="completed")
+
+        log_files = list(temp_log_dir.glob("events-*.jsonl"))
+        assert log_files, "session log not created"
+        with log_files[0].open(encoding="utf-8") as handle:
+            events = [json.loads(line) for line in handle if line.strip()]
+
+        summary = next(event for event in events if event.get("event_type") == "session_end")
+        assert summary["status"] == "completed"
+        assert summary["metrics_count"] >= 1
+
+    def test_safe_log_rotation_manager_manage(self, temp_log_dir):
+        manager = SafeLogRotationManager(
+            str(temp_log_dir),
+            max_size_mb=0.0001,
+            max_age_days=0,
+            max_files=1,
+        )
+
+        # create large file to trigger rotation
+        large_file = temp_log_dir / "events-20240101.jsonl"
+        large_file.write_text("x" * 512, encoding="utf-8")
+
+        # create old file to be deleted
+        old_file = temp_log_dir / "events-20230101.jsonl"
+        old_file.write_text("old", encoding="utf-8")
+
+        rotated_path = manager.rotate_file_safe(large_file)
+        assert rotated_path is not None
+        assert rotated_path.exists()
+
+        removed = manager.cleanup_old_files_safe()
+        assert str(old_file) in removed
+        for removed_path in removed:
+            assert not Path(removed_path).exists()

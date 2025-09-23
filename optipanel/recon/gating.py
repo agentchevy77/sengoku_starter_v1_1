@@ -36,17 +36,17 @@ def _accepted_from_verdicts(v: Mapping[str, Any]) -> bool:
 
 def _acceptance_verdicts_for_snapshot(snap: Mapping[str, Any]) -> Mapping[str, Any]:
     try:
-        from optipanel.acceptance.engine import verdict_by_tf as _verdict
+        from optipanel.acceptance.engine import verdict_by_tf as _verdict  # type: ignore[attr-defined]
     except Exception:
         try:
-            from optipanel.acceptance.engine import acceptance_by_tf as _verdict
+            from optipanel.acceptance.engine import acceptance_by_tf as _verdict  # type: ignore[attr-defined]
         except Exception:
             _verdict = None
 
     if _verdict is None:
         return {}
     try:
-        return _verdict(snap)
+        return _verdict(snap)  # type: ignore[no-any-return]
     except Exception:
         return {}
 

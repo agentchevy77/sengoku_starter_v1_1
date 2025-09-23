@@ -103,7 +103,7 @@ def enrich_alerts_with_supply_sustain(
 
         front_units = snap.get("setups") if isinstance(snap, Mapping) else None
         if not isinstance(front_units, Mapping):
-            feats = snap.get("features_top") or snap.get("features") or {}
+            feats = snap.get("features_top") or snap.get("features") or {} if isinstance(snap, Mapping) else {}
             try:
                 front_units = compute_setups(dict(feats) if isinstance(feats, Mapping) else {})
             except Exception:
@@ -211,7 +211,7 @@ def enrich_alerts_with_gate(
     enriched: list[dict[str, Any]] = []
     for alert in alerts:
         sym = alert.get("symbol")
-        snap = snap_by_sym.get(sym, {})
+        snap = snap_by_sym.get(sym, {}) if isinstance(sym, str) else {}
         gate = compute_gate_for_snapshot(snap, ready_min=ready_min, armed_floor=armed_floor)
         out = dict(alert)
         out["gate"] = {

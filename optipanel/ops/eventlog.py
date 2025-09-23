@@ -19,7 +19,7 @@ class EventLogger:
     """
 
     def __init__(self, log_dir: str | None = None) -> None:
-        root = log_dir or os.getenv("SENGOKU_LOG_DIR", "./runs")
+        root = log_dir or os.getenv("SENGOKU_LOG_DIR") or "./runs"
         self._root = Path(root)
         self._root.mkdir(parents=True, exist_ok=True)
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _SEV_RANK = {"high": 3, "medium": 2, "low": 1, "info": 1}
 
@@ -66,8 +69,8 @@ def update_bus(bus: dict[tuple[str, str], dict[str, Any]], alerts: list[dict[str
                 if new_mag > old_mag:
                     ev["value"] = a.get("value")
                     ev["threshold"] = a.get("threshold")
-            except Exception:
-                pass
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("notify.update_bus.threshold_compare_failed for %s/%s", sym, kind)
 
 
 def aggregate_alerts(runs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -84,7 +87,8 @@ def aggregate_alerts(runs: list[dict[str, Any]]) -> dict[str, Any]:
     def magnitude(e: dict[str, Any]) -> float:
         try:
             return abs(float(e.get("value", 0)) - float(e.get("threshold", 0)))
-        except Exception:
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("notify.magnitude_compute_failed for event %s", e)
             return 0.0
 
     events.sort(key=lambda e: (_rank(e.get("severity")), int(e.get("last_seen_tick", 0)), magnitude(e)), reverse=True)

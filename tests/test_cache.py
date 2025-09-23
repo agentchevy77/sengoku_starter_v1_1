@@ -136,3 +136,29 @@ def test_heap_compaction_metrics(monkeypatch):
     stats = cache.stats()
     assert stats["heap_compactions"] >= 1
     assert stats["tombstone_ratio"] == 0.0
+
+
+def test_ttlcache_compaction_env_overrides(monkeypatch):
+    _patch_clock(monkeypatch)
+    monkeypatch.setenv("SENGOKU_CACHE_HEAP_FACTOR", "1.5")
+    monkeypatch.setenv("SENGOKU_CACHE_HEAP_SLACK", "2")
+    monkeypatch.setenv("SENGOKU_CACHE_TOMBSTONE_WARN", "0.25")
+
+    cache = TTLCache(max_items=3, default_ttl_sec=20)
+    assert cache._heap_compaction_factor == 1.5
+    assert cache._heap_compaction_slack == 2
+    assert cache._tombstone_warn_ratio == 0.25
+
+
+def test_ttlcache_tombstone_warning(monkeypatch, caplog):
+    _patch_clock(monkeypatch)
+    caplog.set_level("WARNING")
+    cache = TTLCache(max_items=5, default_ttl_sec=30, heap_compaction_factor=10.0)
+    cache.configure_compaction(warn_ratio=0.2)
+
+    cache.set("alpha", 1, ttl=30)
+    cache.set("beta", 1, ttl=5)
+    cache.set("alpha", 2, ttl=30)  # update introduces tombstone entry
+
+    warnings = [rec for rec in caplog.records if "tombstone ratio" in rec.getMessage()]
+    assert warnings, "expected tombstone ratio warning"

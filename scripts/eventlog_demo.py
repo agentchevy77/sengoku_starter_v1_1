@@ -1,38 +1,41 @@
 #!/usr/bin/env python3
-"""Demonstrate proper EventLogger usage with alerts."""
+"""Demonstrate session-logger usage with alerts."""
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 from optipanel.cli.main import build_symbol_snapshot, enrich_alerts_with_supply_sustain
-from optipanel.ops.eventlog import EventLogger
+from optipanel.ops.session_logger import get_session_logger
 from optipanel.runtime.loop import run_once
 
 
-def log_alerts_with_context(alerts: list[dict[str, Any]], session_id: str) -> Path:
+def log_alerts_with_context(
+    logger: Any,
+    alerts: list[dict[str, Any]],
+    session_id: str,
+) -> Path | None:
     """Log alerts with proper context and error handling.
 
     Args:
+        logger: Session-aware logger instance
         alerts: List of alert dictionaries
         session_id: Unique identifier for this session
 
     Returns:
         Path to the log file written
     """
-    logger = EventLogger()
+    log_path: Path | None = None
 
-    # Track the path for the first write
-    log_path = None
-
-    for alert in alerts:
+    for idx, alert in enumerate(alerts):
         # Ensure alert is a dict
         if not isinstance(alert, dict):
             alert = {"raw": str(alert)}
 
         # Add session context
-        enriched = {"session_id": session_id, "alert_seq": alerts.index(alert), **alert}
+        enriched = {"session_id": session_id, "alert_seq": idx, **alert}
 
         # Remove None values to keep logs clean
         enriched = {k: v for k, v in enriched.items() if v is not None}
@@ -46,9 +49,13 @@ def log_alerts_with_context(alerts: list[dict[str, Any]], session_id: str) -> Pa
     return log_path
 
 
-def log_recon_decision(symbol: str, features: dict[str, Any], decision: str) -> None:
+def log_recon_decision(
+    logger: Any,
+    symbol: str,
+    features: dict[str, Any],
+    decision: str,
+) -> None:
     """Log a recon decision with full context."""
-    logger = EventLogger()
 
     # Build snapshot for enrichment
     snapshot = build_symbol_snapshot(symbol, features)
@@ -103,52 +110,54 @@ def demo_alert_logging():
 
     print(f"Starting alert logging demo (session: {session_id})")
 
-    # Run the alert engine
-    run_result = run_once(test_symbols)
-    alerts = run_result.get("alerts", [])
+    with get_session_logger(command="eventlog_demo") as logger:
+        # Run the alert engine
+        run_result = run_once(test_symbols)
+        alerts = run_result.get("alerts", [])
 
-    # Enrich alerts with supply and sustainment data
-    base_snaps = [build_symbol_snapshot(sym, feats) for sym, feats in test_symbols.items()]
-    enriched_alerts = enrich_alerts_with_supply_sustain(
-        base_snaps,
-        alerts,
-        include_supply=True,
-        include_sustain=True,
-        include_readiness=True,
-    )
+        # Enrich alerts with supply and sustainment data
+        base_snaps = [build_symbol_snapshot(sym, feats) for sym, feats in test_symbols.items()]
+        enriched_alerts = enrich_alerts_with_supply_sustain(
+            base_snaps,
+            alerts,
+            include_supply=True,
+            include_sustain=True,
+            include_readiness=True,
+        )
 
-    # Log all alerts
-    if enriched_alerts:
-        log_path = log_alerts_with_context(enriched_alerts, session_id)
-        print(f"Logged {len(enriched_alerts)} alerts to: {log_path}")
+        # Log all alerts
+        log_path = None
+        if enriched_alerts:
+            log_path = log_alerts_with_context(logger, enriched_alerts, session_id)
+            print(f"Logged {len(enriched_alerts)} alerts to: {log_path}")
 
-        # Show what was logged
-        print("\nLogged events:")
-        with open(log_path) as f:
-            for line in f:
-                if session_id in line:
-                    event = json.loads(line)
-                    print(
-                        f"  [{event['kind']}] {event.get('symbol', 'N/A')}: "
-                        f"Attack={event.get('attack_ready', 'N/A')}%, "
-                        f"Defense={event.get('defense_ready', 'N/A')}%"
-                    )
-    else:
-        print("No alerts generated")
+            # Show what was logged
+            if log_path and log_path.exists():
+                print("\nLogged events:")
+                with open(log_path, encoding="utf-8") as handle:
+                    for line in handle:
+                        if session_id in line:
+                            event = json.loads(line)
+                            print(
+                                f"  [{event['kind']}] {event.get('symbol', 'N/A')}: "
+                                f"Attack={event.get('attack_ready', 'N/A')}%, "
+                                f"Defense={event.get('defense_ready', 'N/A')}%"
+                            )
+        else:
+            print("No alerts generated")
 
-    # Log some recon decisions
-    for symbol, features in test_symbols.items():
-        decision = "BUY" if features["rs_strength"] > 0.12 else "HOLD"
-        log_recon_decision(symbol, features, decision)
-        print(f"Logged recon decision for {symbol}: {decision}")
+        # Log some recon decisions
+        for symbol, features in test_symbols.items():
+            decision = "BUY" if features["rs_strength"] > 0.12 else "HOLD"
+            log_recon_decision(logger, symbol, features, decision)
+            print(f"Logged recon decision for {symbol}: {decision}")
 
-    print(f"\nAll events logged to: {EventLogger()._root}")
+        print(f"\nAll events logged to: {logger._root}")
 
 
 def show_log_stats():
     """Display statistics about logged events."""
-    logger = EventLogger()
-    log_dir = logger._root
+    log_dir = Path(os.getenv("SENGOKU_LOG_DIR") or "./runs")
 
     print(f"\nEvent Log Statistics (from {log_dir}):")
 

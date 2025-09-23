@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 from optipanel.recon.enrich import enrich_alerts_with_supply_sustain
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_THRESH: dict[str, int] = {
     "score_attack": 65,
@@ -129,8 +132,8 @@ def analyze_batch_with_gate(
             include_supply=bool(include_supply),
             include_sustain=bool(include_sustain),
         )
-    except Exception:
-        pass
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("alerts.supply_enrichment_failed")
 
     try:
         from optipanel.recon.enrich import enrich_alerts_with_gate
@@ -142,7 +145,7 @@ def analyze_batch_with_gate(
             ready_min=ready_min,
             armed_floor=armed_floor,
         )
-    except Exception:
-        pass
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("alerts.gate_enrichment_failed")
 
     return {"alerts": alerts}

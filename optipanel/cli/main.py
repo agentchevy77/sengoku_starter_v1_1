@@ -20,7 +20,7 @@ from optipanel.chips.m15 import compute_microchips_m15
 from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
 from optipanel.monitoring import evaluate_pacing_alerts, load_thresholds_from_env
-from optipanel.ops.eventlog import EventLogger
+from optipanel.ops.session_logger import get_session_logger
 from optipanel.recon.enrich import (
     build_recon_entry,
     enrich_alerts_with_gate,
@@ -438,6 +438,64 @@ def snapshot_cmd_alias(argv=None):  # legacy alias kept for completeness
     return snapshot_main(argv)
 
 
+def metrics_main(argv=None):
+    import argparse
+    import json
+
+    from optipanel.obs.metrics import export_json, snapshot
+
+    ap = argparse.ArgumentParser(prog="sengoku metrics")
+    ap.add_argument("--export", help="Write metrics JSON to this path")
+    ap.add_argument("--summary", action="store_true", help="Show summary instead of full JSON")
+    args = ap.parse_args(argv)
+
+    snap = snapshot()
+
+    if args.export:
+        path = export_json(args.export)
+        print(f"Metrics exported to: {path}")
+
+    if args.summary:
+        # Print human-readable summary
+        counters = snap.get("counters", {})
+        timers = snap.get("timers", {})
+
+        print("=== Metrics Summary ===")
+
+        # Connection stats
+        attempts = counters.get("ibkr.connect.attempts", 0)
+        ok = counters.get("ibkr.connect.ok", 0)
+        if attempts > 0:
+            print(f"Connection Success: {ok}/{attempts} ({ok/attempts:.1%})")
+
+        # Cache stats
+        hits = counters.get("ibkr.daily.cache_hit", 0)
+        misses = counters.get("ibkr.daily.cache_miss", 0)
+        if hits + misses > 0:
+            print(f"Cache Hit Rate: {hits}/{hits+misses} ({hits/(hits+misses):.1%})")
+
+        # Timer stats
+        if "ibkr.handshake.ms" in timers:
+            t = timers["ibkr.handshake.ms"]
+            print(f"Handshake: {t['avg_ms']:.1f}ms avg (n={t['count']})")
+
+        # Error counts
+        error_counts = {}
+        for key, count in counters.items():
+            if key.startswith("ibkr.error."):
+                code = key.split(".")[-1]
+                error_counts[code] = count
+
+        if error_counts:
+            print(f"Errors: {sum(error_counts.values())} total")
+            for code, count in sorted(error_counts.items(), key=lambda x: x[1], reverse=True)[:3]:
+                print(f"  • Code {code}: {count}")
+    else:
+        print(json.dumps(snap, indent=2, sort_keys=True))
+
+    return 0
+
+
 def main(argv=None):
     setup_logging()
     p = argparse.ArgumentParser(prog="sengoku")
@@ -467,6 +525,10 @@ def main(argv=None):
     op.add_argument("--top-n", type=int, default=2)
 
     hp = sub.add_parser("health", help="Diagnose IBKR connectivity and cache state")
+    mp = sub.add_parser("metrics", help="Display runtime metrics and statistics")
+    mp.add_argument("--export", help="Export metrics to JSON file")
+    mp.add_argument("--summary", action="store_true", help="Show human-readable summary")
+
     hp.add_argument("--ping", action="store_true", help="Attempt handshake() to refresh IBKR status")
 
     cr = sub.add_parser("command-room", help="ASCII dashboard panel")
@@ -524,6 +586,13 @@ def main(argv=None):
         return alerts_main(["--symbols-json", args.symbols_json])
     if args.cmd == "health":
         return health_main(ping=getattr(args, "ping", False))
+    if args.cmd == "metrics":
+        inner = []
+        if getattr(args, "export", None):
+            inner += ["--export", args.export]
+        if getattr(args, "summary", False):
+            inner.append("--summary")
+        return metrics_main(inner)
     if args.cmd == "loop":
         return loop_main(
             [
@@ -873,68 +942,67 @@ def recon_main(argv=None):
         fetcher = RealTwsFetcher(cfg_from_env())
         features = fetcher.features_for_symbols(symbols)
 
-    logger = EventLogger()
+    with get_session_logger(command="recon") as logger:
+        output: dict[str, dict[str, object]] = {}
+        pretty_chunks: list[str] = []
+        for sym in symbols:
+            feat = features.get(sym, {}) or {}
+            if not isinstance(feat, dict):
+                feat = dict(feat)
+            entry = build_recon_entry(
+                feat,
+                mode=args.mode,
+                include_supply=include_supply,
+                include_summary=include_summary,
+            )
+            chips_by_tf = entry.get("tf", {})
+            sustainment = entry.get("sustainment", {})
+            front_units = feat.get("setups") if isinstance(feat, Mapping) else None
+            if not isinstance(front_units, Mapping):
+                try:
+                    front_units = compute_setups(dict(feat))
+                except Exception:
+                    front_units = {}
+            acceptance_score = None
+            raw_accept = feat.get("acceptance") if isinstance(feat, Mapping) else None
+            if isinstance(raw_accept, Mapping):
+                summary = raw_accept.get("summary")
+                if isinstance(summary, Mapping):
+                    acceptance_score = summary.get("score")
+            readiness_data = readiness_from_front_sustain(front_units, sustainment, acceptance_score)
+            shaped: dict[str, Any] = {
+                "timeframes": chips_by_tf,
+                "aggregate": entry.get("agg", {}),
+                "recon": entry.get("recon", 0),
+                "sustainment": sustainment,
+                "mode": entry.get("mode", args.mode),
+                "readiness": readiness_data,
+            }
+            if include_summary and entry.get("chips_summary"):
+                shaped["chips_summary"] = entry["chips_summary"]
+            if include_supply and entry.get("supply"):
+                shaped["supply"] = entry["supply"]
+            if entry.get("tf_scout"):
+                shaped["tf_scout"] = entry["tf_scout"]
+            output[sym] = shaped
+            logger.emit(
+                "recon",
+                {
+                    "symbol": sym,
+                    "recon": shaped.get("recon", 0),
+                    "sustainability": int(sustainment.get("sustainability", 0)),
+                    "fakeout_risk": int(sustainment.get("fakeout_risk", 0)),
+                    "supply": shaped.get("supply") if include_supply else None,
+                    "aggregate": shaped.get("aggregate", {}),
+                },
+            )
+            if args.pretty:
+                pretty_chunks.append(_render_recon_human(sym, feat, shaped))
 
-    output: dict[str, dict[str, object]] = {}
-    pretty_chunks: list[str] = []
-    for sym in symbols:
-        feat = features.get(sym, {}) or {}
-        if not isinstance(feat, dict):
-            feat = dict(feat)
-        entry = build_recon_entry(
-            feat,
-            mode=args.mode,
-            include_supply=include_supply,
-            include_summary=include_summary,
-        )
-        chips_by_tf = entry.get("tf", {})
-        sustainment = entry.get("sustainment", {})
-        front_units = feat.get("setups") if isinstance(feat, Mapping) else None
-        if not isinstance(front_units, Mapping):
-            try:
-                front_units = compute_setups(dict(feat))
-            except Exception:
-                front_units = {}
-        acceptance_score = None
-        raw_accept = feat.get("acceptance") if isinstance(feat, Mapping) else None
-        if isinstance(raw_accept, Mapping):
-            summary = raw_accept.get("summary")
-            if isinstance(summary, Mapping):
-                acceptance_score = summary.get("score")
-        readiness_data = readiness_from_front_sustain(front_units, sustainment, acceptance_score)
-        shaped: dict[str, Any] = {
-            "timeframes": chips_by_tf,
-            "aggregate": entry.get("agg", {}),
-            "recon": entry.get("recon", 0),
-            "sustainment": sustainment,
-            "mode": entry.get("mode", args.mode),
-            "readiness": readiness_data,
-        }
-        if include_summary and entry.get("chips_summary"):
-            shaped["chips_summary"] = entry["chips_summary"]
-        if include_supply and entry.get("supply"):
-            shaped["supply"] = entry["supply"]
-        if entry.get("tf_scout"):
-            shaped["tf_scout"] = entry["tf_scout"]
-        output[sym] = shaped
-        logger.emit(
-            "recon",
-            {
-                "symbol": sym,
-                "recon": shaped.get("recon", 0),
-                "sustainability": int(sustainment.get("sustainability", 0)),
-                "fakeout_risk": int(sustainment.get("fakeout_risk", 0)),
-                "supply": shaped.get("supply") if include_supply else None,
-                "aggregate": shaped.get("aggregate", {}),
-            },
-        )
         if args.pretty:
-            pretty_chunks.append(_render_recon_human(sym, feat, shaped))
-
-    if args.pretty:
-        print("\n\n".join(pretty_chunks))
-    else:
-        print(json.dumps(output, indent=2, sort_keys=True))
+            print("\n\n".join(pretty_chunks))
+        else:
+            print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 
 
