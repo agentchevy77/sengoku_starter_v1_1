@@ -2,22 +2,37 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping
+from contextlib import nullcontext
 from typing import Any
 
+from optipanel.ops.session_logger import SessionLogger, ensure_safe_logger
 from optipanel.runtime.loop import run_once
 from optipanel.runtime.scheduler import Job, Scheduler
 from optipanel.ui.command_room import render_command_room
 
 
-def run_watchlist_once(provider, symbols: list[str], *, width: int, top_n: int) -> dict[str, Any]:
-    raw_features = provider.features_for_symbols(symbols)
+def run_watchlist_once(
+    provider,
+    symbols: list[str],
+    *,
+    width: int,
+    top_n: int,
+    logger: SessionLogger | None = None,
+) -> dict[str, Any]:
+    """Process a watchlist once, optionally logging via ``SessionLogger``."""
+
+    safe_logger = ensure_safe_logger(logger, where="ops_loop.run_watchlist_once") if logger else None
+
+    ctx = safe_logger.operation_context if safe_logger else nullcontext
+    with ctx("fetch_features", symbols=symbols) if safe_logger else nullcontext():
+        raw_features = provider.features_for_symbols(symbols)
     features: dict[str, dict[str, Any]] = {}
     for sym in symbols:
         src = dict(raw_features.get(sym, {}))
         last = float(src.get("last", 0.0) or 0.0)
         if last <= 0:
             last = 100.0
-        base = {
+        base: dict[str, Any] = {
             "last": last,
             "dma20": float(src.get("dma20", last)),
             "support": float(src.get("support", last * 0.96)),
@@ -42,8 +57,17 @@ def run_watchlist_once(provider, symbols: list[str], *, width: int, top_n: int) 
         base["bundles"] = bundles
         features[sym] = base
 
-    run = run_once(features)
-    panel = render_command_room(run, width=width, top_n=top_n)
+    with ctx("run_analysis", symbol_count=len(features)) if safe_logger else nullcontext():
+        run = run_once(features)
+    with ctx("render_panel", symbol_count=len(features)) if safe_logger else nullcontext():
+        panel = render_command_room(run, width=width, top_n=top_n)
+
+    if safe_logger:
+        safe_logger.emit(
+            "watchlist_processed",
+            {"symbols": symbols, "alerts": len(run.get("alerts", []))},
+        )
+
     return {"panel": panel, "run": run}
 
 
@@ -73,9 +97,24 @@ def ops_loop(
     sleep: float,
     width: int,
     top_n: int,
+    logger: SessionLogger | None = None,
 ) -> dict[str, Any]:
     scheduler = make_scheduler_from_profile(profile)
     watchlists = profile.get("watchlists", {}) if isinstance(profile, Mapping) else {}
+
+    safe_logger = ensure_safe_logger(logger, where="ops_loop.main") if logger else None
+
+    if safe_logger:
+        safe_logger.emit(
+            "ops_loop_start",
+            {
+                "ticks": ticks,
+                "sleep": sleep,
+                "width": width,
+                "top_n": top_n,
+                "watchlists": list(watchlists.keys()),
+            },
+        )
 
     used_seq = []
     prime_budget = profile.get("budgets", {}).get("prime", {}) if isinstance(profile, Mapping) else {}
@@ -94,12 +133,34 @@ def ops_loop(
             symbols = list(watchlists.get(name, []))
             if not symbols:
                 continue
-            result = run_watchlist_once(provider, symbols, width=width, top_n=top_n)
+            result = run_watchlist_once(
+                provider,
+                symbols,
+                width=width,
+                top_n=top_n,
+                logger=safe_logger,
+            )
             runs.append({"list": name, "tick": step["tick"], "panel": result["panel"]})
             print(f"\n=== {name.upper()} @ tick {step['tick']} (backoff={step['backoff']}) ===")
             print(result["panel"])
 
+            if safe_logger:
+                safe_logger.emit(
+                    "watchlist_rendered",
+                    {"name": name, "tick": step["tick"], "backoff": step["backoff"]},
+                )
+
         if sleep and i < (ticks - 1):
             time.sleep(float(sleep))
+
+    if safe_logger:
+        safe_logger.emit(
+            "ops_loop_complete",
+            {
+                "ticks": ticks,
+                "runs": len(runs),
+                "backoff": scheduler.state.backoff,
+            },
+        )
 
     return {"ticks": ticks, "backoff": scheduler.state.backoff, "runs": runs}

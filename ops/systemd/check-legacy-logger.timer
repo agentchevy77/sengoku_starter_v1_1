@@ -1,0 +1,11 @@
+# Run the legacy logger check every 10 minutes
+[Unit]
+Description=Run legacy logger check every 10 minutes
+
+[Timer]
+OnCalendar=*:0/10
+Persistent=true
+Unit=check-legacy-logger.service
+
+[Install]
+WantedBy=timers.target

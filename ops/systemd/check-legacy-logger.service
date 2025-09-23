@@ -1,0 +1,9 @@
+# Sample systemd unit for legacy logger check
+[Unit]
+Description=Sengoku legacy logger metric check
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env python3 %h/sengoku/scripts/check_legacy_logger_usage.py --minutes 10 --quiet
+WorkingDirectory=%h/sengoku
