@@ -27,6 +27,8 @@ WATCHLIST_RENDERED = "watchlist_rendered"
 
 
 def iter_events(paths: Iterable[Path]) -> Iterable[dict[str, object]]:
+    """Yield JSON event payloads from the given log file paths."""
+
     for path in paths:
         with path.open(encoding="utf-8") as handle:
             for line in handle:
@@ -42,6 +44,8 @@ def iter_events(paths: Iterable[Path]) -> Iterable[dict[str, object]]:
 
 
 def summarize(log_dir: Path, *, window_files: int) -> dict[str, int]:
+    """Aggregate recent watchlist events into a compact metrics dictionary."""
+
     files = sorted(log_dir.glob("events-*.jsonl"), reverse=True)[:window_files]
     counters: Counter[str] = Counter()
 
@@ -64,6 +68,8 @@ def summarize(log_dir: Path, *, window_files: int) -> dict[str, int]:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the metrics exporter."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--log-dir",
@@ -85,6 +91,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """CLI entry point returning a POSIX-style exit status."""
+
     args = parse_args()
     log_dir = Path(args.log_dir).resolve()
     metrics = summarize(log_dir, window_files=max(1, args.files))

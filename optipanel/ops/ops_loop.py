@@ -1,8 +1,9 @@
+"""Core operations loop helpers that power the legacy CLI runtime."""
+
 from __future__ import annotations
 
 import time
 from collections.abc import Mapping
-from contextlib import nullcontext
 from typing import Any
 
 from optipanel.ops.session_logger import SessionLogger, ensure_safe_logger
@@ -19,12 +20,20 @@ def run_watchlist_once(
     top_n: int,
     logger: SessionLogger | None = None,
 ) -> dict[str, Any]:
-    """Process a watchlist once, optionally logging via ``SessionLogger``."""
+    """Return the rendered command-room view for a single watchlist iteration.
+
+    The helper keeps the existing CLI behaviour while giving the new Textual UI
+    a reusable entry point.  When a ``SessionLogger`` is provided we emit rich
+    telemetry events so other surfaces (e.g. dashboards) can consume the same
+    stream of information.
+    """
 
     safe_logger = ensure_safe_logger(logger, where="ops_loop.run_watchlist_once") if logger else None
 
-    ctx = safe_logger.operation_context if safe_logger else nullcontext
-    with ctx("fetch_features", symbols=symbols) if safe_logger else nullcontext():
+    if safe_logger:
+        with safe_logger.operation_context("fetch_features", symbols=symbols):
+            raw_features = provider.features_for_symbols(symbols)
+    else:
         raw_features = provider.features_for_symbols(symbols)
     features: dict[str, dict[str, Any]] = {}
     for sym in symbols:
@@ -57,9 +66,13 @@ def run_watchlist_once(
         base["bundles"] = bundles
         features[sym] = base
 
-    with ctx("run_analysis", symbol_count=len(features)) if safe_logger else nullcontext():
+    if safe_logger:
+        with safe_logger.operation_context("run_analysis", symbol_count=len(features)):
+            run = run_once(features)
+        with safe_logger.operation_context("render_panel", symbol_count=len(features)):
+            panel = render_command_room(run, width=width, top_n=top_n)
+    else:
         run = run_once(features)
-    with ctx("render_panel", symbol_count=len(features)) if safe_logger else nullcontext():
         panel = render_command_room(run, width=width, top_n=top_n)
 
     if safe_logger:
@@ -72,6 +85,8 @@ def run_watchlist_once(
 
 
 def make_scheduler_from_profile(profile: Mapping[str, Any]) -> Scheduler:
+    """Build a :class:`Scheduler` instance from the persisted profile payload."""
+
     budgets = profile.get("budgets", {}) if isinstance(profile, Mapping) else {}
     prime = budgets.get("prime", {}) if isinstance(budgets, Mapping) else {}
     secondary = budgets.get("secondary", {}) if isinstance(budgets, Mapping) else {}
@@ -99,6 +114,7 @@ def ops_loop(
     top_n: int,
     logger: SessionLogger | None = None,
 ) -> dict[str, Any]:
+    """Drive the legacy operations loop for the requested number of ticks."""
     scheduler = make_scheduler_from_profile(profile)
     watchlists = profile.get("watchlists", {}) if isinstance(profile, Mapping) else {}
 

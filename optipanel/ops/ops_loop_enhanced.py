@@ -1,4 +1,4 @@
-"""Enhanced ops loop with session logging integration."""
+"""Enhanced operations loop with first-class session logging integration."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def run_watchlist_once_with_logging(
     width: int,
     top_n: int,
 ) -> dict[str, Any]:
-    """Run watchlist scan with comprehensive logging."""
+    """Return analysis artefacts for one watchlist while emitting telemetry."""
 
     logger = ensure_safe_logger(logger, where="ops_loop_enhanced.run_watchlist_once")
 
@@ -104,7 +104,7 @@ def run_watchlist_once_with_logging(
 
 
 def make_scheduler_from_profile(profile: Mapping[str, Any]) -> Scheduler:
-    """Create scheduler from profile configuration."""
+    """Build a scheduler tuned to the supplied profile budgets."""
     budgets = profile.get("budgets", {}) if isinstance(profile, Mapping) else {}
     prime = budgets.get("prime", {}) if isinstance(budgets, Mapping) else {}
     secondary = budgets.get("secondary", {}) if isinstance(budgets, Mapping) else {}
@@ -132,11 +132,7 @@ def ops_loop_enhanced(
     top_n: int,
     session_id: str | None = None,
 ) -> dict[str, Any]:
-    """Enhanced ops loop with comprehensive session logging.
-
-    This version adds detailed logging of all operations, metrics,
-    and errors while maintaining full backward compatibility.
-    """
+    """Drive the production ops loop with structured telemetry for every step."""
 
     # Initialize session logger
     with get_session_logger(command="ops_loop", session_id=session_id) as logger:

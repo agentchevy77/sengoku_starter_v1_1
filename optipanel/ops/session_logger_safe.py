@@ -86,6 +86,8 @@ class SafeSessionLogger(EventLogger):
             start_time=time.time(),
         )
 
+        self._last_emit_path: Path = self._root / "events-latest.jsonl"
+
         # Thread-safe context stack
         self._context_stack: list[dict[str, Any]] = []
         self._finalized = False
@@ -158,10 +160,10 @@ class SafeSessionLogger(EventLogger):
             else:
                 return str(obj)
 
-    def emit(self, kind: str, payload: Mapping[str, Any]) -> Path | None:
+    def emit(self, kind: str, payload: Mapping[str, Any]) -> Path:
         """Thread-safe emit with error handling."""
         if self._finalized:
-            return None
+            return self._last_emit_path
 
         with self._lock:
             try:
@@ -183,11 +185,13 @@ class SafeSessionLogger(EventLogger):
                 self._metadata.event_count += 1
 
                 # Call parent emit with error handling
-                return super().emit(kind, enriched)
+                path = super().emit(kind, enriched)
+                self._last_emit_path = path
+                return path
 
             except Exception as e:
                 self._log_internal_error(f"emit({kind})", e)
-                return None
+                return self._last_emit_path
 
     def emit_session_event(self, event_type: str, details: Mapping[str, Any] | None = None) -> Path | None:
         """Emit a session lifecycle event."""
@@ -229,7 +233,7 @@ class SafeSessionLogger(EventLogger):
         """Emit operation with bounded metrics tracking."""
         with self._lock:
             try:
-                payload = {
+                payload: dict[str, Any] = {
                     "operation": operation,
                     "details": dict(details),
                 }
@@ -247,7 +251,7 @@ class SafeSessionLogger(EventLogger):
                                 "max_ms": None,
                             }
 
-                        metrics = self._metadata.metrics[operation]
+                        metrics: dict[str, Any] = self._metadata.metrics[operation]
                         metrics["count"] += 1
                         metrics["total_ms"] += duration_ms
 
@@ -472,14 +476,14 @@ class SafeLogRotationManager:
 
     def cleanup_old_files_safe(self) -> list[str]:
         """Safely cleanup old files."""
-        removed = []
+        removed: list[str] = []
 
         with self._lock:
             try:
                 current_time = time.time()
 
                 # Safely collect log files
-                log_files = []
+                log_files: list[Path] = []
                 for pattern in ("events-*.jsonl*", "sengoku_*.log*"):
                     with suppress(Exception):
                         log_files.extend(self._log_dir.glob(pattern))
