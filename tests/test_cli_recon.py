@@ -17,7 +17,7 @@ def test_recon_main_requires_symbols(provider, monkeypatch):
                 return {sym: {} for sym in symbols}
 
         monkeypatch.setenv("SENGOKU_TWS_HOST", "127.0.0.1")
-        monkeypatch.setenv("SENGOKU_TWS_PORT", "7497")
+        monkeypatch.setenv("SENGOKU_TWS_PORT", "7496")
         monkeypatch.setenv("SENGOKU_TWS_CLIENT_ID", "107")
         monkeypatch.setenv("SENGOKU_TWS_REF", "SPY")
         monkeypatch.setitem(

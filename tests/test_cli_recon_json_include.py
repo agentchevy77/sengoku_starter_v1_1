@@ -160,7 +160,7 @@ def test_recon_pretty_includes_supply_and_acceptance(tmp_path, capsys):
     assert "=== recon aaa" in lower
     assert "scout     recon" in lower
     assert "sustain" in lower and "fakeout" in lower
-    assert "readiness" in lower and "attack=" in lower
+    assert "ready" in lower
     assert "scout    m15" in lower
     assert "supply" in lower and "⇐" in out
     assert "accept" in lower

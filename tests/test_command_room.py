@@ -48,7 +48,7 @@ def test_render_command_room_contains_top_and_bars():
     assert "micro m15" in lower_panel
     assert "scout     recon" in lower_panel
     assert "sustain" in lower_panel and "fakeout" in lower_panel
-    assert "readiness attack=" in lower_panel
+    assert "ready" in lower_panel
     assert "micro d1" in lower_panel
     assert "supply" in lower_panel
     assert "⇐" in panel

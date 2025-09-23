@@ -13,7 +13,8 @@ from optipanel.chips.micro import (
     compute_microchips_h60,
     compute_microchips_m15,
 )
-from optipanel.readiness.engine import compute_readiness
+from optipanel.recon.readiness import readiness_from_front_sustain
+from optipanel.setups.engine import compute_setups
 
 
 def _find_snap(scan_results: list[dict[str, Any]], symbol: str) -> dict[str, Any] | None:
@@ -243,28 +244,12 @@ def _render_sustainment_lines(
 
 
 def _render_readiness_line(
-    chips: Mapping[str, Mapping[str, int]] | None,
-    sustainment: Mapping[str, Any] | None = None,
-    acceptance: Mapping[str, Any] | None = None,
+    front_units: Mapping[str, Any] | None,
+    sustainment: Mapping[str, Any] | None,
 ) -> str | None:
     try:
-        if not isinstance(chips, Mapping):
-            return None
-
-        normalized: dict[str, dict[str, int]] = {}
-        for tf, block in chips.items():
-            if not isinstance(block, Mapping):
-                continue
-            sanitized: dict[str, int] = {}
-            for key, value in block.items():
-                if isinstance(value, int | float):
-                    sanitized[str(key)] = int(round(float(value)))
-            if sanitized:
-                normalized[str(tf)] = sanitized
-
-        sustain = sustainment or compute_sustainment(normalized)
-        readiness = compute_readiness(normalized, sustain, acceptance)
-        return "READINESS attack={:3d}  defense={:3d}".format(
+        readiness = readiness_from_front_sustain(front_units or {}, sustainment or {})
+        return "READY    attack={:3d}  defense={:3d}".format(
             int(readiness.get("attack", 0)),
             int(readiness.get("defense", 0)),
         )
@@ -310,6 +295,14 @@ def render_command_room(run_out: dict[str, Any], width: int = 24, top_n: int = 1
             for line in render_battlefield(units, width=width).splitlines():
                 _add(line)
 
+        front_units = snap.get("setups") if isinstance(snap, Mapping) else None
+        if not isinstance(front_units, Mapping):
+            feats = features or {}
+            try:
+                front_units = compute_setups(dict(feats) if isinstance(feats, Mapping) else {})
+            except Exception:
+                front_units = {}
+
         chips = snap.get("prob_chips")
         acceptance_flags: dict[str, dict[str, bool]] = {}
         accept_line: str | None = None
@@ -330,16 +323,12 @@ def render_command_room(run_out: dict[str, Any], width: int = 24, top_n: int = 1
             for line in sustain_lines:
                 _add(line)
             acceptance_flags, accept_line = _compute_acceptance(features)
-            ready_line = _render_readiness_line(
-                canon_tf,
-                sustainment=sustain_data,
-                acceptance=acceptance_flags,
-            )
+            ready_line = _render_readiness_line(front_units, sustain_data)
             if ready_line:
                 _add(ready_line)
         else:
             acceptance_flags, accept_line = _compute_acceptance(features)
-            ready_line = _render_readiness_line({}, acceptance=acceptance_flags)
+            ready_line = _render_readiness_line(front_units, {})
             if ready_line:
                 _add(ready_line)
 

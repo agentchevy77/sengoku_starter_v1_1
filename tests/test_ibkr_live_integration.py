@@ -18,7 +18,7 @@ def test_tws_connection_handshake():
 
     config = TwsConfig(
         host=os.getenv("SENGOKU_TWS_HOST", "127.0.0.1"),
-        port=int(os.getenv("SENGOKU_TWS_PORT", "7497")),  # Paper trading port
+        port=int(os.getenv("SENGOKU_TWS_PORT", "7496")),  # Default live port (set SENGOKU_TWS_PORT for paper)
         client_id=int(os.getenv("SENGOKU_TWS_CLIENT_ID", "999")),
     )
 
@@ -37,7 +37,7 @@ def test_tws_fetch_market_data():
 
     config = TwsConfig(
         host=os.getenv("SENGOKU_TWS_HOST", "127.0.0.1"),
-        port=int(os.getenv("SENGOKU_TWS_PORT", "7497")),
+        port=int(os.getenv("SENGOKU_TWS_PORT", "7496")),
         client_id=int(os.getenv("SENGOKU_TWS_CLIENT_ID", "999")),
     )
 
@@ -73,7 +73,7 @@ def test_tws_cache_behavior():
 
     config = TwsConfig(
         host=os.getenv("SENGOKU_TWS_HOST", "127.0.0.1"),
-        port=int(os.getenv("SENGOKU_TWS_PORT", "7497")),
+        port=int(os.getenv("SENGOKU_TWS_PORT", "7496")),
         client_id=int(os.getenv("SENGOKU_TWS_CLIENT_ID", "999")),
         daily_ttl_sec=60,  # Short TTL for testing
     )
@@ -106,7 +106,7 @@ def test_tws_pacing_and_rate_limiting():
 
     config = TwsConfig(
         host=os.getenv("SENGOKU_TWS_HOST", "127.0.0.1"),
-        port=int(os.getenv("SENGOKU_TWS_PORT", "7497")),
+        port=int(os.getenv("SENGOKU_TWS_PORT", "7496")),
         client_id=int(os.getenv("SENGOKU_TWS_CLIENT_ID", "999")),
         pacing_max_requests=3,
         pacing_interval_sec=5.0,
@@ -141,7 +141,7 @@ def test_tws_error_handling():
 
     config = TwsConfig(
         host=os.getenv("SENGOKU_TWS_HOST", "127.0.0.1"),
-        port=int(os.getenv("SENGOKU_TWS_PORT", "7497")),
+        port=int(os.getenv("SENGOKU_TWS_PORT", "7496")),
         client_id=int(os.getenv("SENGOKU_TWS_CLIENT_ID", "999")),
         hist_timeout=5.0,  # Short timeout for testing
     )
@@ -169,7 +169,7 @@ def test_tws_full_provider_stack():
 
     config = TwsConfig(
         host=os.getenv("SENGOKU_TWS_HOST", "127.0.0.1"),
-        port=int(os.getenv("SENGOKU_TWS_PORT", "7497")),
+        port=int(os.getenv("SENGOKU_TWS_PORT", "7496")),
         client_id=int(os.getenv("SENGOKU_TWS_CLIENT_ID", "999")),
     )
 
@@ -196,7 +196,7 @@ def test_tws_concurrent_requests():
 
     config = TwsConfig(
         host=os.getenv("SENGOKU_TWS_HOST", "127.0.0.1"),
-        port=int(os.getenv("SENGOKU_TWS_PORT", "7497")),
+        port=int(os.getenv("SENGOKU_TWS_PORT", "7496")),
         client_id=int(os.getenv("SENGOKU_TWS_CLIENT_ID", "999")),
     )
 

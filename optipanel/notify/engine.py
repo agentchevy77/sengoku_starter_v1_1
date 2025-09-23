@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 _SEV_RANK = {"high": 3, "medium": 2, "low": 1, "info": 1}
@@ -40,6 +41,9 @@ def update_bus(bus: dict[tuple[str, str], dict[str, Any]], alerts: list[dict[str
                 bus[key]["supply"] = a["supply"]
             if a.get("gate"):
                 bus[key]["gate"] = dict(a["gate"])
+            readiness_payload = a.get("readiness")
+            if readiness_payload:
+                bus[key]["readiness"] = deepcopy(readiness_payload)
         else:
             ev["count"] += 1
             ev["last_seen_tick"] = tick_index
@@ -53,6 +57,8 @@ def update_bus(bus: dict[tuple[str, str], dict[str, Any]], alerts: list[dict[str
                 ev["supply"] = a["supply"]
             if "gate" not in ev and a.get("gate"):
                 ev["gate"] = dict(a["gate"])
+            if "readiness" not in ev and a.get("readiness"):
+                ev["readiness"] = deepcopy(a["readiness"])
             # keep the largest magnitude distance from threshold as representative
             try:
                 old_mag = abs(float(ev.get("value", 0)) - float(ev.get("threshold", 0)))

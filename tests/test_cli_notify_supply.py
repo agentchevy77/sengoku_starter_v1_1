@@ -30,6 +30,14 @@ def _run_notify(args, capsys):
     assert isinstance(data, dict)
     events = data.get("events") or data.get("alerts") or []
     assert events, "Expected events in notify output"
+    for evt in events:
+        readiness = evt.get("readiness")
+        assert readiness and 0 <= readiness.get("attack", 0) <= 100
+        assert 0 <= readiness.get("defense", 0) <= 100
+        comps = readiness.get("components")
+        assert isinstance(comps, dict)
+        for key in ("attack_core", "defense_core", "sustainability", "fakeout_risk", "acceptance"):
+            assert 0 <= comps.get(key, 0) <= 100
     return events
 
 

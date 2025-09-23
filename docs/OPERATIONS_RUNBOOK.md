@@ -1,7 +1,7 @@
 # Operations Runbook (Sengoku v0.7.0)
 
 ## Prereqs
-- TWS running, API enabled, correct port (7496 live / 7497 paper), “Allow connections from localhost” ON.
+- TWS running, API enabled, live port 7496 (set `SENGOKU_TWS_PORT` if you must target paper 7497), “Allow connections from localhost” ON.
 - Windows Firewall inbound rule for the TWS port from WSL host (or your host subnet).
 - In WSL: export `SENGOKU_TWS_HOST`, `SENGOKU_TWS_PORT`, `SENGOKU_TWS_CLIENT_ID`, `SENGOKU_TWS_REF`.
 

@@ -20,6 +20,7 @@ from optipanel.chips.m15 import compute_microchips_m15
 from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
 from optipanel.monitoring import evaluate_pacing_alerts, load_thresholds_from_env
+from optipanel.ops.eventlog import EventLogger
 from optipanel.recon.enrich import (
     build_recon_entry,
     enrich_alerts_with_gate,
@@ -420,7 +421,7 @@ def profiles_main(argv=None):
     ap.add_argument("--features-yaml", required=True)
     ap.add_argument("--ticks", type=int, default=3)
     ap.add_argument("--tws-host", default="127.0.0.1")
-    ap.add_argument("--tws-port", type=int, default=7497)
+    ap.add_argument("--tws-port", type=int, default=7496)
     ap.add_argument("--client-id", type=int, default=107)
     ap.add_argument("--ref-symbol", default="SPY")
     args = ap.parse_args(argv)
@@ -485,6 +486,9 @@ def main(argv=None):
     nt = sub.add_parser("notify", help="Aggregate alerts into a deduped event list")
     nt.add_argument("--symbols-json", required=True)
     nt.add_argument("--iterations", type=int, default=2)
+    nt.add_argument("--require-acceptance", action="store_true", help="Drop alerts unless gate=go")
+    nt.add_argument("--ready-min", type=int, default=None, help="Readiness threshold for gate=go (default 65)")
+    nt.add_argument("--include-supply", action="store_true", help="Include SUPPLY lines in alert payloads")
     rc = sub.add_parser("recon", help="Compute recon chips composite")
     rc.add_argument("--symbols", required=True)
     rc.add_argument("--provider", choices=["tws-live", "mock"], default="tws-live")
@@ -504,7 +508,7 @@ def main(argv=None):
     prl.add_argument("--features-yaml")
     prl.add_argument("--ticks", type=int, default=3)
     prl.add_argument("--tws-host", default="127.0.0.1")
-    prl.add_argument("--tws-port", type=int, default=7497)
+    prl.add_argument("--tws-port", type=int, default=7496)
     prl.add_argument("--client-id", type=int, default=107)
     prl.add_argument("--ref-symbol", default="SPY")
     pr.add_argument("--profiles-yaml", required=True)
@@ -591,14 +595,15 @@ def main(argv=None):
             ]
         )
     if args.cmd == "notify":
-        return notify_main(
-            [
-                "--symbols-json",
-                args.symbols_json,
-                "--iterations",
-                str(getattr(args, "iterations", 2)),
-            ]
-        )
+        inner = ["--symbols-json", args.symbols_json, "--iterations", str(getattr(args, "iterations", 2))]
+        if getattr(args, "require_acceptance", False):
+            inner.append("--require-acceptance")
+        ready_min = getattr(args, "ready_min", None)
+        if ready_min is not None:
+            inner += ["--ready-min", str(ready_min)]
+        if getattr(args, "include_supply", False):
+            inner.append("--include-supply")
+        return notify_main(inner)
     if args.cmd == "recon":
         inner_argv = ["--symbols", args.symbols, "--provider", args.provider]
         if getattr(args, "features_yaml", None):
@@ -625,7 +630,7 @@ def main(argv=None):
                 "--tws-host",
                 getattr(args, "tws_host", "127.0.0.1"),
                 "--tws-port",
-                str(getattr(args, "tws_port", 7497)),
+                str(getattr(args, "tws_port", 7496)),
                 "--client-id",
                 str(getattr(args, "client_id", 107)),
                 "--ref-symbol",
@@ -692,7 +697,7 @@ def profiles_live_cmd(
         client_env = os.environ.get("SENGOKU_TWS_CLIENT_ID") if tws_client_id is None else tws_client_id
         ref_symbol_env = os.environ.get("SENGOKU_TWS_REF") if tws_ref_symbol is None else tws_ref_symbol
 
-        port = int(port_env) if port_env is not None else 7497
+        port = int(port_env) if port_env is not None else 7496
         client_id = int(client_env) if client_env is not None else 107
         ref_symbol = str(ref_symbol_env) if ref_symbol_env is not None else "SPY"
 
@@ -732,7 +737,7 @@ def profiles_live_main(argv=None):
     ap.add_argument("--features-yaml")  # required for mock
     ap.add_argument("--ticks", type=int, default=3)
     ap.add_argument("--tws-host", default="127.0.0.1")
-    ap.add_argument("--tws-port", type=int, default=7497)
+    ap.add_argument("--tws-port", type=int, default=7496)
     ap.add_argument("--client-id", type=int, default=107)
     ap.add_argument("--ref-symbol", default="SPY")
     args = ap.parse_args(argv)
@@ -776,6 +781,7 @@ def notify_cmd(
             alerts,
             include_supply=include_supply,
             include_sustain=True,
+            include_readiness=True,
         )
         alerts = enrich_alerts_with_gate(
             base_snaps,
@@ -867,6 +873,8 @@ def recon_main(argv=None):
         fetcher = RealTwsFetcher(cfg_from_env())
         features = fetcher.features_for_symbols(symbols)
 
+    logger = EventLogger()
+
     output: dict[str, dict[str, object]] = {}
     pretty_chunks: list[str] = []
     for sym in symbols:
@@ -881,9 +889,14 @@ def recon_main(argv=None):
         )
         chips_by_tf = entry.get("tf", {})
         sustainment = entry.get("sustainment", {})
-        front_units = compute_setups(dict(features))
+        front_units = feat.get("setups") if isinstance(feat, Mapping) else None
+        if not isinstance(front_units, Mapping):
+            try:
+                front_units = compute_setups(dict(feat))
+            except Exception:
+                front_units = {}
         acceptance_score = None
-        raw_accept = features.get("acceptance") if isinstance(features, Mapping) else None
+        raw_accept = feat.get("acceptance") if isinstance(feat, Mapping) else None
         if isinstance(raw_accept, Mapping):
             summary = raw_accept.get("summary")
             if isinstance(summary, Mapping):
@@ -904,6 +917,17 @@ def recon_main(argv=None):
         if entry.get("tf_scout"):
             shaped["tf_scout"] = entry["tf_scout"]
         output[sym] = shaped
+        logger.emit(
+            "recon",
+            {
+                "symbol": sym,
+                "recon": shaped.get("recon", 0),
+                "sustainability": int(sustainment.get("sustainability", 0)),
+                "fakeout_risk": int(sustainment.get("fakeout_risk", 0)),
+                "supply": shaped.get("supply") if include_supply else None,
+                "aggregate": shaped.get("aggregate", {}),
+            },
+        )
         if args.pretty:
             pretty_chunks.append(_render_recon_human(sym, feat, shaped))
 

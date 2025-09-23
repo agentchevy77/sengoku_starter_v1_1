@@ -104,6 +104,20 @@ from optipanel.cli import main as cli_main
             ["--symbols-json", "{}", "--iterations", "9"],
         ),
         (
+            ["notify", "--symbols-json", "{}", "--require-acceptance", "--ready-min", "70", "--include-supply"],
+            "notify_main",
+            [
+                "--symbols-json",
+                "{}",
+                "--iterations",
+                "2",
+                "--require-acceptance",
+                "--ready-min",
+                "70",
+                "--include-supply",
+            ],
+        ),
+        (
             [
                 "profiles-live",
                 "--profiles-yaml",
@@ -126,7 +140,7 @@ from optipanel.cli import main as cli_main
                 "--tws-host",
                 "127.0.0.1",
                 "--tws-port",
-                "7497",
+                "7496",
                 "--client-id",
                 "107",
                 "--ref-symbol",

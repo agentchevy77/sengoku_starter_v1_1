@@ -7,3 +7,4 @@
 - Command Room integration stitches microchips, acceptance, and supply into a unified tactical view.
 - Optional alert enrichment injects supply and sustainment context into downstream notification channels.
 - Health CLI exposes runtime + IBKR diagnostics (pacing alerts, cache depth) with optional `--ping` handshake.
+- Alerts now expose acceptance×readiness gating with `READY` meters feeding notify payloads and CLI toggles for ops.

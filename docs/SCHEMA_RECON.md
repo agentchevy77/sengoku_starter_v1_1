@@ -1,46 +1,33 @@
-# Recon JSON Schema
+# Recon JSON Schema & CLI Contract
 
-The recon CLI (`sengoku recon`) produces a per-symbol JSON payload. Each top-level key is a symbol ticker and maps to a recon entry matching the structure below.
+Each `sengoku recon` invocation yields a JSON object keyed by symbol. Every symbol entry exposes the following fields:
 
-```json
-{
-  "SYMBOL": {
-    "recon": 0..100,
-    "agg": { "breakout_up": 62, "trend_long": 72, "rejection_down": 58, "...": "..." },
-    "tf": {
-      "D":   { "breakout_up": 62, "trend_long": 72, "...": "..." },
-      "H1":  { "breakout_up": 60, "trend_long": 68, "...": "..." },
-      "M15": { "breakout_up": 55, "trend_long": 65, "...": "..." }
-    },
-    "sustainment": { "sustainability": 83, "fakeout_risk": 36 },
-    "readiness": {
-      "attack": 82,
-      "defense": 26,
-      "components": {
-        "attack_core": 74,
-        "defense_core": 28,
-        "sustainability": 83,
-        "fakeout_risk": 36
-      }
-    },
-    "supply": { "breakout_up": ["rvol_H1", "vwap_H1"], "trend_long": ["rvol_H1", "rs_H1"] },
-    "chips_summary": {
-      "D":   { "position": 62, "momentum": 72, "supply": 58 },
-      "H1":  { "position": 61, "momentum": 70, "supply": 56 },
-      "M15": { "position": 59, "momentum": 64, "supply": 55 }
-    }
-  }
-}
+- `recon` *(int 0–100)* — composite recon score (higher = more favourable setup).
+- `agg` *(mapping)* — aggregate probability chips such as `breakout_up_prob`, `trend_long_prob`, `rejection_down_prob`, etc.
+- `tf` *(mapping)* — per-timeframe chip blocks for `D`, `H1`, and `M15`; values are 0–100.
+- `sustainment` *(mapping, always present)*:
+  - `sustainability` *(int 0–100)*
+  - `fakeout_risk` *(int 0–100)*
+- `readiness` *(mapping, always present)*:
+  - `attack` / `defense` *(int 0–100)* — READY meters derived from setups + sustainment + acceptance.
+  - `components` *(mapping)* — provenance inputs (`attack_core`, `defense_core`, `sustainability`, `fakeout_risk`, `acceptance`).
+- `supply` *(mapping, optional)* — per front-unit narrative, e.g. `{ "breakout_up": ["donchian_M15", "res_clear_M15", "rs_H1"], ... }`.
+- `chips_summary` *(mapping, optional)* — compact per-timeframe summary emitted by the aggregator when requested.
+
+> Supply narratives are documented in [RECON_ALERTS_SUPPLY](RECON_ALERTS_SUPPLY.md).
+
+## How to enable optional fields
+
+- CLI flag: `--include-supply` adds SUPPLY narratives to pretty output and JSON.
+- Env default: `SENGOKU_RECON_SUPPLY_DEFAULT=1` forces SUPPLY on without the CLI flag.
+- JSON summaries: `--json-include chips_summary` appends the `chips_summary` block.
+
+Example invocations:
+
+```bash
+# Pretty mode with supply
+sengoku recon --symbols AAPL,MSFT --provider tws-live --pretty --include-supply
+
+# JSON with summaries + supply
+sengoku recon --symbols AAPL,MSFT --provider tws-live --json-include chips_summary --include-supply
 ```
-
-Notes:
-- `recon`: headline readiness score (0‒100) derived from probability chips.
-- `agg`: aggregated probability-chip intensities across timeframes.
-- `tf`: raw probability chips per timeframe (`D`, `H1`, `M15`).
-- `sustainment`: continuation vs fakeout readings (0‒100).
-- `readiness`: compact readiness meters with offensive (`attack`) and defensive (`defense`) readiness plus component debug info.
-- `supply` *(optional)*: readiness factors backing each front (enabled via `--include-supply` or `SENGOKU_RECON_SUPPLY_DEFAULT=1`).
-- `chips_summary` *(optional)*: compact position/momentum/supply snapshot per timeframe (enabled via `--json-include chips_summary`).
-
-
-Validation helper: `optipanel.recon.schemas.validate_recon_entry` performs lightweight checks without external dependencies.
