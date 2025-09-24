@@ -8,6 +8,7 @@
 - Test: sandbox adapter regression checks to pin seeded outputs.
 - Test: runtime loop integration exercising scan → recon → alert pipeline with multi-timeframe data.
 - Test: budget meter cooldown/backoff scenarios with synthetic clock control.
+- Doc: `docs/PROJECT_SNAPSHOT.md` as a living status brief linked from the README.
 
 ### Tooling
 - Enabled `pytest-cov` and `pre-commit` in the local environment to enforce formatting and real coverage thresholds.

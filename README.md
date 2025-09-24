@@ -56,6 +56,7 @@ Alternatively set `SENGOKU_TWS_HOST`, `SENGOKU_TWS_PORT`, and `SENGOKU_TWS_CLIEN
 - [Recon schema reference](docs/SCHEMA_RECON.md) — field-by-field guide to recon JSON payloads.
 - [Recon, alerts & supply toggles](docs/RECON_ALERTS_SUPPLY.md) — how to enable supply/sustain and CLI examples.
 - [Command Room layout](docs/COMMAND_ROOM.md) — ordering of panel sections and sample lines.
+- [Project Snapshot](docs/PROJECT_SNAPSHOT.md) — living doc for mission focus, active work, and quick commands.
 
 ## Recon Quickstart
 
@@ -76,4 +77,3 @@ Environment toggles:
 - `SENGOKU_RECON_SUPPLY_DEFAULT=1`
 - `SENGOKU_ALERTS_INCLUDE_SUPPLY=1`
 - `SENGOKU_NOTIFY_INCLUDE_SUPPLY=1`
-
