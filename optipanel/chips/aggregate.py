@@ -60,6 +60,36 @@ def aggregate_chips(
         return out
 
 
+# Legacy compatibility: historical code invoked ``compute_microchips`` with a
+# flat feature dictionary.  The modern codebase favours explicit timeframe
+# microchip calculators, but the helpers still power a few scripts (notably
+# ``test_ibkr_coverage``).  Keep a thin wrapper that extracts the handful of
+# keys we expose in aggregate alerts.
+_MICRO_KEYS = (
+    "breakout_up",
+    "breakdown_down",
+    "bounce_up",
+    "rejection_down",
+    "trend_long",
+    "trend_short",
+    "exhaustion",
+)
+
+
+def compute_microchips(features: dict[str, Any] | None) -> dict[str, int]:
+    if not isinstance(features, dict):
+        return {}
+
+    out: dict[str, int] = {}
+    for key in _MICRO_KEYS:
+        value = features.get(key)
+        if value is None:
+            prob_key = f"{key}_prob"
+            value = features.get(prob_key, 0)
+        out[key] = _clamp(float(value or 0))
+    return out
+
+
 def recon_score(agg: dict[str, int]) -> int:
     """Scout score: avg(breakout_up, trend_long) - 0.5*rejection_down."""
 

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+# Sentinel default values used to coerce raw snapshots into numeric form.
+# Exposed via ``tws_translator`` for backwards compatibility with older
+# provider wiring (see ``test_ibkr_coverage.py``).
+
 
 def _as_float(v: Any, default: float) -> float:
     if v is None:
@@ -31,3 +35,16 @@ def translate_snapshots(raw: dict[str, dict[str, Any]]) -> dict[str, dict[str, f
             "vwap_diff": _as_float(d.get("vwap_diff"), 0.0),
         }
     return out
+
+
+def tws_translator(raw: dict[str, dict[str, Any]]) -> dict[str, dict[str, float]]:
+    """Compatibility wrapper expected by legacy coverage tests.
+
+    Historically ``TwsFeaturesProvider`` was constructed with a ``tws_translator``
+    callable. The modern implementation exposes ``translate_snapshots`` instead,
+    but the older name survives in a few scripts (notably ``test_ibkr_coverage``).
+    Providing this thin wrapper lets those entry points keep working while we
+    continue steering new code toward ``translate_snapshots``.
+    """
+
+    return translate_snapshots(raw)

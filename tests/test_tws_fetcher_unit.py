@@ -116,7 +116,7 @@ def test_pace_request_uses_global_rate_limiter(monkeypatch, base_cfg):
             return self.wait
 
     dummy = DummyLimiter(wait=0.5)
-    fetcher._global_rate_limiter = dummy  # type: ignore[assignment]
+    fetcher._global_rate_limiter = dummy
     fetcher._rate_wait_total = 1.0
     fetcher._rate_wait_last = 0.0
 

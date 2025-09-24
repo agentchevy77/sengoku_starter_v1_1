@@ -82,7 +82,8 @@ def test_all_ibkr_components():
     from optipanel.alerts.engine import analyze_batch_with_supply
 
     # Test alerts
-    alerts = analyze_batch_with_supply(features)
+    snapshots_for_alerts = [{"symbol": sym, **data, "setups": data.get("setups", {})} for sym, data in features.items()]
+    alerts = analyze_batch_with_supply(snapshots_for_alerts)
     print(f"  ✓ Generated {len(alerts)} alerts")
 
     print("\nTesting Chips...")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -23,3 +24,10 @@ def parse_features_yaml(text: str) -> dict[str, dict[str, Any]]:
         if isinstance(feats, dict):
             out[str(sym)] = dict(feats)
     return out
+
+
+def load_profiles_yaml(path: str | Path) -> dict[str, Any]:
+    """Legacy helper retained for coverage exercises."""
+
+    text = Path(path).read_text(encoding="utf-8")
+    return parse_profiles_yaml(text)

@@ -48,3 +48,12 @@ class TwsFeaturesProvider:
             else:
                 sanitized[sym] = _sanitize_features({})
         return sanitized
+
+    def __call__(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+        """Backwards-compatible callable façade.
+
+        Older scripts used provider instances as callables.  Delegate to
+        ``features_for_symbols`` so those entry points keep working.
+        """
+
+        return self.features_for_symbols(list(symbols))

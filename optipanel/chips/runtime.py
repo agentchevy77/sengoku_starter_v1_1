@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from optipanel.battlefield.supply import explain_supply
+from optipanel.chips.aggregate import compute_microchips
 from optipanel.chips.daily import compute_daily_microchips
 from optipanel.chips.h60 import compute_h60_microchips
 from optipanel.chips.m15 import compute_m15_microchips
@@ -100,3 +101,15 @@ def supply_for_snapshot(snapshot: Mapping[str, Any]) -> dict[str, list[str]]:
         return {}
     chips = chips_by_tf_for_snapshot(snapshot)
     return explain_supply(setups, chips) or {}
+
+
+def enrich_features_with_chips(features: Mapping[str, Mapping[str, Any]] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(features, Mapping):
+        return {}
+
+    enriched: dict[str, dict[str, Any]] = {}
+    for symbol, data in features.items():
+        base = dict(data) if isinstance(data, Mapping) else {}
+        base.setdefault("microchips", compute_microchips(base))
+        enriched[str(symbol)] = base
+    return enriched
