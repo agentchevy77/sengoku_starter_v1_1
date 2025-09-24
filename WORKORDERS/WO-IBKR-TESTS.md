@@ -23,3 +23,5 @@ Increase integration safety for IBKR-facing adapters by adding deterministic tes
 - Reuse the patterns from `tests/test_tws_fetcher_unit.py` as scaffolding.
 - Keep the fake lightweight so it runs in CI without external dependencies.
 - Coordinate with IBKR integration work to avoid drift between real and stubbed behaviour.
+
+**Primary test:** `pytest tests/test_tws_fetcher_features.py -q`

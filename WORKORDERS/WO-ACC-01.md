@@ -19,3 +19,5 @@
   3. Range-bound ⇒ not armed.
 - Command room test asserts the ACCEPT line is rendered for symbols with bar data.
 - `pytest -q` passes.
+
+**Primary test:** `pytest tests/test_acceptance_engine.py -q`

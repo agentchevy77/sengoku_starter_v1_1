@@ -83,3 +83,5 @@ def render_battlefield(units: Dict[str, Dict[str, int]], width: int = 20) -> str
         lines.append(f"{k:<10} bull [{_bar(bull, width)}]  bear [{_bar(bear, width)}]")
 
     return "\n".join(lines)
+
+**Primary test:** `pytest tests/test_bf_ascii.py -q`

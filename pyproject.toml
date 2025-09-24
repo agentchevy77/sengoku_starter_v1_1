@@ -70,6 +70,8 @@ dev = [
     "pre-commit>=4.3.0",
     "black>=25.9.0",
     "ruff>=0.13.1",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
 ]
 
 [tool.setuptools.packages.find]

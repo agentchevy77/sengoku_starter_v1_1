@@ -46,7 +46,8 @@ def dumps(obj: Any, *, sort_keys: bool = False, indent: int | None = None) -> st
 
     if not _HAS_ORJSON or _should_fallback(indent):
         return _std_json.dumps(obj, sort_keys=sort_keys, indent=indent)
-    return orjson.dumps(obj, option=_orjson_options(sort_keys, indent)).decode()
+    result: bytes = orjson.dumps(obj, option=_orjson_options(sort_keys, indent))
+    return result.decode()
 
 
 def dump(obj: Any, fp: IO[str], *, sort_keys: bool = False, indent: int | None = None) -> str:

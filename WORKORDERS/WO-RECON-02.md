@@ -20,3 +20,5 @@ Use probability chips (“prob”) as the canonical signal for recon outputs, wi
 - `pytest -q` passes.
 - Recon JSON shows identical `agg/recon/sustainment` whether or not micro mode is requested.
 - Command Room retains prob chip blocks and includes micro scout rows with clear labeling.
+
+**Primary test:** `pytest tests/test_prob_tf.py -q`

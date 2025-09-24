@@ -8,3 +8,5 @@
 **DoD**
 - Unit tests cover aggregate + recon_score.
 - Command Room shows SCOUT recon line.
+
+**Primary test:** `pytest tests/test_chips_aggregate.py -q`

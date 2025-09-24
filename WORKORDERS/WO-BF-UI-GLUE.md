@@ -20,3 +20,5 @@
 - `sengoku recon --symbols AAPL,MSFT --provider tws-live --pretty` prints SCOUT and SUPPLY lines
 - `sengoku recon --provider mock --features-yaml <file> --pretty` prints same narratives
 - No regressions to Command Room tests
+
+**Primary test:** `pytest tests/test_cli_recon.py -q`

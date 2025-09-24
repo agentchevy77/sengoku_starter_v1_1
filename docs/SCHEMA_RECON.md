@@ -30,4 +30,7 @@ sengoku recon --symbols AAPL,MSFT --provider tws-live --pretty --include-supply
 
 # JSON with summaries + supply
 sengoku recon --symbols AAPL,MSFT --provider tws-live --json-include chips_summary --include-supply
+
+# FastAPI recon detail (after starting python -m optipanel.api.app)
+curl "http://localhost:8000/recon/AAPL?include_supply=1"
 ```

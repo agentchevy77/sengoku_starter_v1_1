@@ -46,3 +46,5 @@ Textual-powered TUI while exposing the same data feeds via a FastAPI gateway.
 - Add CI jobs for the FastAPI test suite (`pytest -m web`) and Textual smoke
   tests (`pytest tests/ui/test_textual_app.py -m slow`).
 - Collaborate with Ops to deploy the gateway behind the existing auth layer.
+
+**Primary test:** `pytest tests/test_app_smoke.py -q`

@@ -19,3 +19,5 @@
 - `pytest -q` passes.
 - Only Allowed paths were changed.
 - Pure functions only; no I/O or network; no new deps.
+
+**Primary test:** `pytest tests/test_setups.py -q`

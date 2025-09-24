@@ -8,3 +8,5 @@ Tasks
 
 DoD
 - `pytest -q` passes; no lingering tasks and low memory growth.
+
+**Primary test:** `pytest tests/test_leaks.py -q`

@@ -3,6 +3,15 @@
 Welcome to the Sengoku Decision Cockpit repo. These instructions replace the
 legacy single–work order workflow and reflect how we operate today.
 
+## Start Here
+
+1. **README.md** (≈5 minutes) — follow the quick start checklist and review the
+   architecture cheatsheet to see how runtime, services, and adapters connect.
+2. **docs/PROJECT_SNAPSHOT.md** (≈5 minutes) — align on mission focus, active
+   fronts, and current module owners before you pick up a work order.
+3. **WORKORDERS/** overview (≈10 minutes) — skim the work order matching your
+   scope and note the primary validation command at the bottom.
+
 ## Planning & Scope
 
 - Coordinate with the Lead Architect before you start. A branch may cover
@@ -52,6 +61,9 @@ legacy single–work order workflow and reflect how we operate today.
   features, tests, or tooling.
 - Ensure `pre-commit`, `pytest`, and coverage hooks are clean before requesting
   review.
+- After you land meaningful changes or finish a green `pytest` run, follow the
+  snapshot upkeep reminder in the README quick start to keep
+  `docs/PROJECT_SNAPSHOT.md` current.
 - If you detect inconsistent state or unexpected local changes, stop and sync
   with the team before proceeding.
 

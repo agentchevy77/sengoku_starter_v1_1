@@ -11,3 +11,5 @@ Rules:
   ["breakout_up","breakdown_down","bounce_up","rejection_down","trend_long","trend_short","exhaustion"].
 - Severity: high if value >= threshold+15; medium if >= threshold+5; else low.
 - Message: "SYMBOL kind value >= threshold" (or "<= threshold" for score_defend).
+
+**Primary test:** `pytest tests/test_alerts.py -q`

@@ -11,7 +11,7 @@ from typing import Any
 try:  # pragma: no cover - optional dependency
     import yaml
 except Exception:  # pragma: no cover - fallback when pyyaml missing
-    yaml = None  # type: ignore[assignment]
+    yaml = None
 
 from optipanel import json_utils as json
 
@@ -167,7 +167,7 @@ class SecretResolver:
 
     def _load_aws(self, secret_id: str) -> Mapping[str, Any]:  # pragma: no cover - requires boto3
         try:
-            import boto3  # type: ignore[import-not-found]
+            import boto3
         except Exception as exc:  # pragma: no cover
             raise RuntimeError("boto3 is required for AWS secret resolution") from exc
 

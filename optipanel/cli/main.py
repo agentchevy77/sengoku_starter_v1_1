@@ -57,6 +57,12 @@ _SUPPLY_ORDER = (
 )
 
 
+def tui_main(argv=None):
+    from optipanel.ui.textual.minimal import main as _tui_main
+
+    return _tui_main(argv)
+
+
 def _select_bundle(features: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     bundles = features.get("bundles") if isinstance(features, Mapping) else None
     if isinstance(bundles, Mapping):
@@ -576,6 +582,14 @@ def main(argv=None):
     pr.add_argument("--features-yaml", required=True)
     pr.add_argument("--ticks", type=int, default=3)
 
+    tui = sub.add_parser("tui", help="Interactive terminal UI (Textual)")
+    tui.add_argument("--profiles-yaml", required=True)
+    tui.add_argument("--provider", default="mock", choices=["mock", "tws-mock", "tws-live"])
+    tui.add_argument("--features-yaml", help="Only used for provider=mock")
+    tui.add_argument("--refresh", type=float, default=5.0)
+    tui.add_argument("--width", type=int, default=24)
+    tui.add_argument("--top-n", type=int, default=1)
+
     args = p.parse_args(argv)
     if args.cmd == "snapshot":
         return snapshot_main(["--symbol", args.symbol, "--features-json", args.features_json])
@@ -705,6 +719,22 @@ def main(argv=None):
                 getattr(args, "ref_symbol", "SPY"),
             ]
         )
+    if args.cmd == "tui":
+        cli_args = [
+            "--profiles-yaml",
+            args.profiles_yaml,
+            "--provider",
+            args.provider,
+            "--refresh",
+            str(args.refresh),
+            "--width",
+            str(args.width),
+            "--top-n",
+            str(args.top_n),
+        ]
+        if getattr(args, "features_yaml", None):
+            cli_args += ["--features-yaml", args.features_yaml]
+        return tui_main(cli_args)
     p.error("unknown command")
 
 

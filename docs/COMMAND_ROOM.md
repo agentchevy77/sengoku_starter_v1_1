@@ -24,3 +24,8 @@ The `sengoku command-room` CLI prints the tactical panel in the sequence below. 
 All numeric readings are 0–100 integers. READY lines surface the same readiness meters shipped with recon JSON/alerts.
 
 These recon, sustain, ready, supply, and micro lines render directly beneath the battlefield unit grid for the most actionable symbol.
+
+## UI & API access
+
+- **Textual cockpit** — run `python -m optipanel.ui.textual.app` after installing `.[ui]` extras to see the live Command Room layout in the terminal.
+- **FastAPI gateway** — run `python -m optipanel.api.app` (requires `.[web]` extras) and query `GET /watchlist` or `GET /recon/{symbol}` for the same data in JSON form.

@@ -8,3 +8,5 @@ Tasks
 
 DoD
 - Tests pass; no orphan tasks; TTL expirations verified.
+
+**Primary test:** `pytest tests/test_scheduler.py -q`

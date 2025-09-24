@@ -8,3 +8,5 @@ Tasks
 
 DoD
 - Tests simulate usage crossing the cap -> backoff; cooldown clears it.
+
+**Primary test:** `pytest tests/test_budget.py -q`

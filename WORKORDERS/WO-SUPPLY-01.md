@@ -8,3 +8,5 @@
 **DoD**
 - tests/test_supply_explain.py passing.
 - Command Room shows "SUPPLY breakout_up ⇐…" etc for the top symbol.
+
+**Primary test:** `pytest tests/test_supply_explain.py -q`
