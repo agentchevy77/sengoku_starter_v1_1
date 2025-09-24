@@ -21,9 +21,9 @@ async = [
     "uvloop>=0.20.0",  # High-performance event loop
 ]
 ui = [
-    "textual>=0.89.0",  # Modern TUI framework
+    "textual>=6.1.0",  # Modern TUI framework (latest stable)
     "rich>=13.9.0",  # Rich text formatting
-    "plotext>=6.2.0",  # Terminal plotting
+    "plotext>=5.3.2,<6.0.0",  # Terminal plotting (latest available on PyPI)
 ]
 web = [
     "fastapi>=0.115.0",  # High-performance API framework
