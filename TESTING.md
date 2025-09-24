@@ -22,6 +22,7 @@ pytest tests/test_specific.py
 pytest -m "not slow"        # Skip slow tests
 pytest -m "unit"           # Only unit tests
 pytest -m "integration"    # Only integration tests
+pytest -m slow --no-cov     # CLI smoke commands (shell out to sengoku)
 
 # Coverage report
 pytest --cov-report=html    # Generate HTML report
@@ -108,6 +109,10 @@ def sample_features():
 def test_function(sample_features):
     result = process_features(sample_features)
     assert result["AAPL"]["score"] > 50
+
+Fixtures shared across CLI smoketests live under `tests/fixtures/` (e.g.
+`cli_features.yaml`).  The slow suite (`tests/test_cli_slow.py`) reads from
+those files and invokes the real CLI processes to validate end-to-end output.
 ```
 
 ## What NOT to Test

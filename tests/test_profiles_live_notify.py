@@ -1,29 +1,11 @@
 from optipanel.adapters.ibkr import MockFeaturesProvider
-from optipanel.config.loader import parse_features_yaml, parse_profiles_yaml
 from optipanel.runtime.profiles_live import run_profiles_with_provider
 
-PROF_YAML = """
-watchlists:
-  prime: [AAA]
-  secondary: [BBB]
-budgets:
-  prime: {soft_cap: 10, cooldown: 1, used_lines: [20,5,5], scan_stride_backoff: 2}
-  secondary: {soft_cap: 100, cooldown: 1, used_lines: 1}
-ui: {width: 20, top_n: 1}
-"""
 
-FEAT_YAML = """
-AAA: {last: 105.0, dma20: 100.0, support: 101.0, resistance: 106.0, rvol: 1.6, rs_strength: 0.3, vwap_diff: 0.012}
-BBB: {last:  95.0, dma20: 100.0, support:  96.0, resistance: 100.0, rvol: 1.5, rs_strength: -0.25, vwap_diff: -0.012}
-"""
+def test_profiles_live_includes_notify_with_events(example_profiles, example_features):
+    provider = MockFeaturesProvider(example_features)
 
-
-def test_profiles_live_includes_notify_with_events():
-    prof = parse_profiles_yaml(PROF_YAML)
-    feats = parse_features_yaml(FEAT_YAML)
-    provider = MockFeaturesProvider(feats)
-
-    out = run_profiles_with_provider(prof, provider, ticks=3)
+    out = run_profiles_with_provider(example_profiles, provider, ticks=3)
     prime = out["lists"]["prime"]
     sec = out["lists"]["secondary"]
 
