@@ -8,13 +8,13 @@ watchers or dashboards.
 
 from __future__ import annotations
 
-import json
 import os
 import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from optipanel import json_utils as json
 from optipanel.runtime.watchdog import WatchdogSnapshot
 
 

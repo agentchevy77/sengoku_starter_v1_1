@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import json
 import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+from optipanel import json_utils as json
 
 _lock = threading.RLock()
 _counters: dict[str, int] = {}

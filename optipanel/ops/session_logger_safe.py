@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import threading
@@ -15,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from optipanel import json_utils as json
 from optipanel.ops.eventlog import EventLogger
 
 

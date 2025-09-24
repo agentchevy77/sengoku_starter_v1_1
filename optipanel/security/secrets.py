@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 from collections.abc import Callable, Mapping
@@ -13,6 +12,8 @@ try:  # pragma: no cover - optional dependency
     import yaml
 except Exception:  # pragma: no cover - fallback when pyyaml missing
     yaml = None  # type: ignore[assignment]
+
+from optipanel import json_utils as json
 
 logger = logging.getLogger(__name__)
 

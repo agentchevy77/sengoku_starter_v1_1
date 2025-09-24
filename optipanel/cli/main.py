@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 from collections.abc import Mapping
@@ -11,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
+from optipanel import json_utils as json
 from optipanel.acceptance.engine import detect_breakout_acceptance
 from optipanel.adapters.ibkr.iface import FeaturesProvider
 from optipanel.alerts.engine import DEFAULT_THRESH, analyze_batch_with_supply
@@ -440,7 +440,6 @@ def snapshot_cmd_alias(argv=None):  # legacy alias kept for completeness
 
 def metrics_main(argv=None):
     import argparse
-    import json
 
     from optipanel.obs.metrics import export_json, snapshot
 
@@ -797,7 +796,6 @@ def profiles_live_cmd(
 
 def profiles_live_main(argv=None):
     import argparse
-    import json
     import pathlib
 
     ap = argparse.ArgumentParser(prog="sengoku profiles-live")
@@ -866,7 +864,6 @@ def notify_cmd(
 
 def notify_main(argv=None):
     import argparse
-    import json
 
     ap = argparse.ArgumentParser(prog="sengoku notify")
     ap.add_argument("--require-acceptance", action="store_true", help="drop alerts unless gate=go")
@@ -904,7 +901,6 @@ def notify_main(argv=None):
 
 def recon_main(argv=None):
     import argparse
-    import json
     from pathlib import Path
 
     from optipanel.adapters.ibkr import RealTwsFetcher, cfg_from_env
