@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Test: deterministic fake TWS session covering `RealTwsFetcher.features_for_symbols` end-to-end.
+- Test: scheduler/service coverage for async job lifecycle and failure logging.
+- Test: sandbox adapter regression checks to pin seeded outputs.
+- Test: runtime loop integration exercising scan → recon → alert pipeline with multi-timeframe data.
+- Test: budget meter cooldown/backoff scenarios with synthetic clock control.
+
+### Tooling
+- Enabled `pytest-cov` and `pre-commit` in the local environment to enforce formatting and real coverage thresholds.
+
 ## [0.7.0] - 2025-09-23
 
 ### Added
