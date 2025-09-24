@@ -23,7 +23,7 @@ async = [
 ui = [
     "textual>=0.89.0",  # Modern TUI framework
     "rich>=13.9.0",  # Rich text formatting
-    "plotext>=5.2.8",  # Terminal plotting
+    "plotext>=6.2.0",  # Terminal plotting
 ]
 web = [
     "fastapi>=0.115.0",  # High-performance API framework

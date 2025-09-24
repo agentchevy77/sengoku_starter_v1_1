@@ -11,6 +11,7 @@
 
 ### Tooling
 - Enabled `pytest-cov` and `pre-commit` in the local environment to enforce formatting and real coverage thresholds.
+- Updated UI extra to require `plotext>=6.2.0` for improved terminal plotting features.
 
 ## [0.7.0] - 2025-09-23
 
