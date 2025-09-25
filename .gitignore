@@ -1,0 +1,35 @@
+# Exclude user-specific and machine artifacts
+.git-credentials
+.gitconfig
+.bash_history
+.cache/
+.claude/
+.codex/
+.config/
+.local/
+.npm/
+.npm-global/
+.venv/
+.landscape/
+
+# Python virtual environments and build outputs
+opt/
+ibkr-sdk/venv/
+ibkr-sdk/dist/
+
+# Miscellaneous
+*.pyc
+__pycache__/
+.bashrc
+.bash_logout
+.profile
+.inputrc
+.lesshst
+.motd_shown
+.node_repl_history
+.npmrc
+.sudo_as_admin_successful
+.claude.json
+.claude.json.backup
+.gemini/
+sengoku_starter_v1_1/
