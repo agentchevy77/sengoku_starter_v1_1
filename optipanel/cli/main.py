@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import sys
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import asdict
@@ -28,6 +29,24 @@ from optipanel.recon.enrich import (
 )
 from optipanel.recon.readiness import readiness_from_front_sustain
 from optipanel.setups.engine import compute_setups
+
+
+# Safe type conversion helpers
+def safe_int(value: Any, default: int = 0) -> int:
+    """Safely convert value to int with fallback."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """Safely convert value to float with fallback."""
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
 
 _LOG_INITIALIZED = False
 
@@ -55,6 +74,16 @@ _SUPPLY_ORDER = (
     "rejection_down",
     "exhaustion",
 )
+
+
+def _load_json_arg(raw: str, label: str) -> Any:
+    """Parse CLI JSON arguments with helpful error messages."""
+
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        print(f"Error: invalid {label} JSON payload ({exc}).", file=sys.stderr)
+        raise SystemExit(2) from exc
 
 
 def tui_main(argv=None):
@@ -210,7 +239,11 @@ def setup_logging() -> None:
 
     logging.basicConfig(level=level, format="%(asctime)s - %(levelname)s - %(message)s", handlers=handlers)
 
-    max_logs = int(os.environ.get("SENGOKU_MAX_LOG_FILES", "0"))
+    # Safe integer conversion for max log files
+    try:
+        max_logs = int(os.environ.get("SENGOKU_MAX_LOG_FILES", "0"))
+    except (ValueError, TypeError):
+        max_logs = 0
     if max_logs > 0:
         existing = sorted(log_dir.glob("sengoku_*.log"))
         excess = len(existing) - max_logs
@@ -284,7 +317,7 @@ def snapshot_main(argv=None):
     ap.add_argument("--symbol", required=True)
     ap.add_argument("--features-json", required=True)
     args = ap.parse_args(argv)
-    features = json.loads(args.features_json)
+    features = _load_json_arg(args.features_json, "features")
     snap = build_symbol_snapshot(args.symbol, features)
     print(json.dumps(snap, indent=2, sort_keys=True))
     return 0
@@ -294,7 +327,7 @@ def scan_main(argv=None):
     ap = argparse.ArgumentParser(prog="sengoku scan")
     ap.add_argument("--symbols-json", required=True)
     args = ap.parse_args(argv)
-    symbols = json.loads(args.symbols_json)
+    symbols = _load_json_arg(args.symbols_json, "symbols")
     out = run_local_scan(symbols)
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0
@@ -309,7 +342,7 @@ def alerts_main(argv=None):
         help="Include supply lines in alert payloads",
     )
     args = ap.parse_args(argv)
-    symbols = json.loads(args.symbols_json)
+    symbols = _load_json_arg(args.symbols_json, "symbols")
     include_supply = args.include_supply or os.getenv("SENGOKU_ALERTS_INCLUDE_SUPPLY", "") == "1"
     alerts = alerts_cmd(symbols, include_supply=include_supply)
     print(json.dumps(alerts, indent=2, sort_keys=True))
@@ -355,7 +388,7 @@ def loop_main(argv=None):
     ap.add_argument("--iterations", type=int, default=2)
     ap.add_argument("--sleep", type=float, default=0.0, help="seconds between iterations (0 for none)")
     args = ap.parse_args(argv)
-    symbols = json.loads(args.symbols_json)
+    symbols = _load_json_arg(args.symbols_json, "symbols")
     runs = []
     for _ in range(max(1, int(args.iterations))):
         runs.append(run_once(symbols))
@@ -382,7 +415,7 @@ def command_room_main(argv=None):
     ap.add_argument("--iterations", type=int, default=1)
     ap.add_argument("--sleep", type=float, default=0.0)
     args = ap.parse_args(argv)
-    symbols = json.loads(args.symbols_json)
+    symbols = _load_json_arg(args.symbols_json, "symbols")
     chunks = []
     for i in range(max(1, int(args.iterations))):
         chunks.append(render_command_room(run_once(symbols), width=int(args.width), top_n=int(args.top_n)))
@@ -407,8 +440,8 @@ def driver_main(argv=None):
     ap.add_argument("--ticks", type=int, default=5)
     ap.add_argument("--sleep", type=float, default=0.0)
     args = ap.parse_args(argv)
-    symbols = json.loads(args.symbols_json)
-    profile = json.loads(args.profile_json)
+    symbols = _load_json_arg(args.symbols_json, "symbols")
+    profile = _load_json_arg(args.profile_json, "profile")
     out = run_driver(symbols, profile, ticks=int(args.ticks))
     if args.sleep > 0:
         time.sleep(args.sleep)
@@ -906,7 +939,7 @@ def notify_main(argv=None):
         help="Include SUPPLY lines in alert payloads",
     )
     args = ap.parse_args(argv)
-    symbols = json.loads(args.symbols_json)
+    symbols = _load_json_arg(args.symbols_json, "symbols")
     include_supply = args.include_supply or os.getenv("SENGOKU_NOTIFY_INCLUDE_SUPPLY", "") == "1"
 
     def _env_truth(value: str | None) -> bool:

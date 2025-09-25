@@ -28,6 +28,7 @@ class PerformanceMonitor:
         self.fetcher: RealTwsFetcher | None = None
         self.running = False
         self.thread: threading.Thread | None = None
+        self._metrics_lock = threading.Lock()
 
         # Metrics tracking
         self.request_times = deque(maxlen=100)  # Last 100 request times
@@ -55,21 +56,26 @@ class PerformanceMonitor:
         try:
             self.fetcher.features_for_symbols(symbols)
             latency = (time.perf_counter() - start) * 1000
-            self.latencies.append(latency)
-            self.request_times.append(time.time())
-            self.total_requests += 1
+            with self._metrics_lock:
+                self.latencies.append(latency)
+                self.request_times.append(time.time())
+                self.total_requests += 1
             return latency
         except Exception:
-            self.error_count += 1
+            with self._metrics_lock:
+                self.error_count += 1
             return -1
 
     def get_request_rate(self) -> float:
         """Calculate current request rate per second."""
-        if len(self.request_times) < 2:
+        with self._metrics_lock:
+            samples = list(self.request_times)
+
+        if len(samples) < 2:
             return 0
 
         now = time.time()
-        recent = [t for t in self.request_times if now - t <= 10]  # Last 10 seconds
+        recent = [t for t in samples if now - t <= 10]  # Last 10 seconds
 
         if len(recent) < 2:
             return 0
@@ -80,14 +86,17 @@ class PerformanceMonitor:
 
     def get_latency_stats(self) -> dict:
         """Get latency statistics."""
-        if not self.latencies:
+        with self._metrics_lock:
+            samples = list(self.latencies)
+
+        if not samples:
             return {"avg": 0, "min": 0, "max": 0, "p50": 0, "p95": 0}
 
-        sorted_lat = sorted(self.latencies)
+        sorted_lat = sorted(samples)
         n = len(sorted_lat)
 
         return {
-            "avg": sum(self.latencies) / n,
+            "avg": sum(samples) / n,
             "min": sorted_lat[0],
             "max": sorted_lat[-1],
             "p50": sorted_lat[n // 2],
@@ -105,8 +114,15 @@ class PerformanceMonitor:
             return 0
 
     def clear_screen(self):
-        """Clear terminal screen."""
-        os.system("cls" if os.name == "nt" else "clear")
+        """Clear terminal screen safely using subprocess."""
+        import subprocess
+
+        try:
+            cmd = "cls" if os.name == "nt" else "clear"
+            subprocess.run([cmd], shell=(os.name == "nt"), check=False, capture_output=True, timeout=1)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            # Fallback: print newlines if clear command fails
+            print("\n" * 50)
 
     def display_dashboard(self):
         """Display performance dashboard."""
@@ -127,15 +143,19 @@ class PerformanceMonitor:
 
         # Request metrics
         request_rate = self.get_request_rate()
-        error_rate = (self.error_count / self.total_requests * 100) if self.total_requests > 0 else 0
+        lat_stats = self.get_latency_stats()
+        with self._metrics_lock:
+            total_requests = self.total_requests
+            error_count = self.error_count
+
+        error_rate = (error_count / total_requests * 100) if total_requests > 0 else 0
 
         print("\n📊 REQUEST METRICS")
-        print(f"  Total Requests: {self.total_requests}")
+        print(f"  Total Requests: {total_requests}")
         print(f"  Request Rate: {request_rate:.2f} req/sec")
-        print(f"  Error Rate: {error_rate:.1f}% ({self.error_count} errors)")
+        print(f"  Error Rate: {error_rate:.1f}% ({error_count} errors)")
 
         # Latency stats
-        lat_stats = self.get_latency_stats()
         print("\n⚡ LATENCY (ms)")
         print(f"  Average: {lat_stats['avg']:.2f}")
         print(f"  Min: {lat_stats['min']:.2f}")
@@ -146,16 +166,19 @@ class PerformanceMonitor:
         # Cache metrics
         if self.fetcher:
             cache_size = self.fetcher.daily_cache_len()
-            cache_efficiency = (self.cache_hits / self.total_requests * 100) if self.total_requests > 0 else 0
+            with self._metrics_lock:
+                cache_hits = self.cache_hits
+                cache_efficiency = (cache_hits / total_requests * 100) if total_requests > 0 else 0
 
             print("\n💾 CACHE")
             print(f"  Entries: {cache_size}/{self.fetcher.cfg.daily_max_entries}")
             print(f"  Efficiency: {cache_efficiency:.1f}%")
 
             # Update cache hit tracking
-            if cache_size > self.last_cache_size:
-                self.cache_hits += 1
-            self.last_cache_size = cache_size
+            with self._metrics_lock:
+                if cache_size > self.last_cache_size:
+                    self.cache_hits += 1
+                self.last_cache_size = cache_size
 
         # Rate limiting
         if self.fetcher:

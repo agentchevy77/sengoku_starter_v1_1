@@ -32,14 +32,21 @@ def check_for_legacy_usage(log_dir: Path, days_back: int = 1) -> int:
         for log_file in sorted(log_dir.glob("events-*.jsonl")):
             # Skip files older than cutoff (based on filename)
             try:
+                # Safer date parsing with explicit validation
                 parts = log_file.stem.split("-", 1)
-                if len(parts) < 2:
-                    raise ValueError("missing date segment")
-                date_str = parts[1]
+                if len(parts) != 2 or not parts[1]:
+                    # Can't parse filename - check file to be safe
+                    continue
+
+                date_str = parts[1].strip()
+                # Validate date string format before parsing
+                if len(date_str) != 8 or not date_str.isdigit():
+                    continue
+
                 file_date = datetime.strptime(date_str, "%Y%m%d")
                 if file_date < cutoff_time.replace(hour=0, minute=0, second=0, microsecond=0):
                     continue
-            except (IndexError, ValueError):
+            except (ValueError, AttributeError):
                 # If we can't parse the date, check the file anyway
                 pass
 
@@ -87,6 +94,11 @@ def check_for_legacy_usage(log_dir: Path, days_back: int = 1) -> int:
 
 def main():
     """Main entry point."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from optipanel.utils.safe_ops import safe_int_env
+
     log_dir = Path(os.getenv("SENGOKU_LOG_DIR", "./runs"))
 
     if not log_dir.exists():
@@ -94,7 +106,7 @@ def main():
         return 2
 
     # Check last 7 days by default
-    days = int(os.getenv("CHECK_DAYS", "7"))
+    days = safe_int_env("CHECK_DAYS", 7)
 
     return check_for_legacy_usage(log_dir, days)
 

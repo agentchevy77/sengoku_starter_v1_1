@@ -93,7 +93,7 @@ class ProviderWithBundles:
             "resistance": 103.0,
             "bundles": {"1d": {"last": 101.0, "support": 99.0, "resistance": 103.0}},
         }
-        return {sym: base for sym in symbols}
+        return dict.fromkeys(symbols, base)
 
 
 def _load_events(log_dir: Path) -> list[dict[str, object]]:

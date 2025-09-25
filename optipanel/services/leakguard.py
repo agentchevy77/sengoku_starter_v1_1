@@ -109,7 +109,7 @@ class PeriodicTask:
         self._stop.set()
         if self._task and not self._task.done():
             self._task.cancel()
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BaseException):
                 await self._task
         self._task = None
 

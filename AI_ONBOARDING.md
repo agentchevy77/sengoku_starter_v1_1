@@ -43,6 +43,9 @@ legacy single–work order workflow and reflect how we operate today.
 5. When touching CLI or runtime behaviour, include integration tests where
    practical. Use existing fixtures and the sandbox adapter—no new live network
    calls in automated tests.
+6. CLI commands that accept JSON (`--symbols-json`, `--profile-json`, etc.) now
+   validate input centrally and exit with code `2` on parse errors; surface
+   user-friendly stderr messages whenever you wrap these helpers.
 
 ## Deliverables & Reporting
 

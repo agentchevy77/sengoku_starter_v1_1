@@ -15,7 +15,11 @@ if str(ROOT) not in sys.path:
 
 
 def load_ticks(path: Path) -> list[dict[str, Any]]:
-    data = json.loads(path.read_text())
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"Error loading {path}: {e}", file=sys.stderr)
+        return []
     ticks = data.get("ticks")
     if not isinstance(ticks, list):
         raise ValueError("Input JSON must contain a list under 'ticks'")

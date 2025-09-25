@@ -78,7 +78,8 @@ class PositionState:
         if setups.get("trend_short", 0) >= th["exit_trend"]:
             return True
         # stop / take
-        change = (last / pos.avg_px) - 1.0 if pos.avg_px else 0.0
+        # Fixed: Proper zero check for floats (handles -0.0)
+        change = 0.0 if abs(pos.avg_px) < 1e-9 else (last / pos.avg_px) - 1.0
         if change <= th["stop_loss"]:
             return True
         return change >= th["take_profit"]

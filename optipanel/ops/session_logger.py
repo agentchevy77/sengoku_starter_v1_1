@@ -50,17 +50,44 @@ class LogRotationManager:
         rotated_name = f"{file_path.stem}.{timestamp}{file_path.suffix}"
         rotated_path = file_path.parent / rotated_name
 
-        file_path.rename(rotated_path)
+        # Atomic rename with retry for race conditions
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                file_path.rename(rotated_path)
+                break
+            except OSError:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(0.1 * (2**attempt))  # Exponential backoff
 
         # Compress if gzip is available
         try:
             import gzip
 
             compressed_path = Path(f"{rotated_path}.gz")
-            with open(rotated_path, "rb") as f_in, gzip.open(compressed_path, "wb") as f_out:
-                f_out.write(f_in.read())
-            rotated_path.unlink()
-            return compressed_path
+            chunk_size = 1024 * 1024  # 1MB chunks to avoid memory issues
+
+            try:
+                # Stream compress with proper resource management
+                with open(rotated_path, "rb") as f_in, gzip.open(compressed_path, "wb", compresslevel=6) as f_out:
+                    while chunk := f_in.read(chunk_size):
+                        f_out.write(chunk)
+
+                # Verify compressed file before deleting original
+                if compressed_path.stat().st_size > 0:
+                    rotated_path.unlink()
+                    return compressed_path
+                else:
+                    compressed_path.unlink()  # Remove failed compression
+                    return rotated_path
+
+            except Exception:
+                # Ensure cleanup on failure
+                if compressed_path.exists():
+                    compressed_path.unlink(missing_ok=True)
+                return rotated_path
+
         except ImportError:
             return rotated_path
 
@@ -86,11 +113,18 @@ class LogRotationManager:
                 removed.append(file_path)
 
         # Remove based on count (keep most recent)
-        remaining = [f for f in log_files if f not in removed and f.exists()]
+        # Fixed TOCTOU: Don't check exists() then unlink() separately
+        remaining = [f for f in log_files if f not in removed]
         if len(remaining) > self._max_files:
             for file_path in remaining[: -self._max_files]:
-                file_path.unlink()
-                removed.append(file_path)
+                try:
+                    file_path.unlink(missing_ok=True)  # Python 3.8+ atomic operation
+                    removed.append(file_path)
+                except OSError as e:
+                    # Log but don't crash on removal failure
+                    import logging
+
+                    logging.warning(f"Failed to remove old log {file_path}: {e}")
 
         return removed
 

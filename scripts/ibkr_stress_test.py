@@ -65,7 +65,7 @@ class IBKRStressTest:
         self.requests_made: int = 0
         self.successful_requests: int = 0
         self.failed_requests: int = 0
-        self.errors: list[str] = []
+        self.errors: deque[str] = deque(maxlen=1000)  # Fixed: bounded to prevent memory leak
 
     def connect(self) -> bool:
         """Establish connection to IBKR."""

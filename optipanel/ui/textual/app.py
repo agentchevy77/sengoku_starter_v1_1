@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -96,6 +97,7 @@ class SengokuTui(App):
         self._panels: dict[str, PanelSnapshot] = {}
         self._refresh_lock = asyncio.Lock()
         self._timer: Timer | None = None
+        self._pending_refresh: asyncio.Task[None] | None = None
 
     def compose(self) -> ComposeResult:  # pragma: no cover - UI composition
         yield Header(show_clock=True)
@@ -132,6 +134,16 @@ class SengokuTui(App):
 
         await self.refresh_data(force=True)
         self._timer = self.set_interval(self.refresh_interval, self._auto_refresh, pause=False)
+
+    async def on_unmount(self) -> None:  # pragma: no cover - UI shutdown
+        if self._timer is not None:
+            self._timer.stop()
+        if self._pending_refresh is not None:
+            self._pending_refresh.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._pending_refresh
+            self._pending_refresh = None
+        await super().on_unmount()
 
     async def action_request_refresh(self) -> None:  # pragma: no cover - binder
         await self.post_message(RefreshNow())
@@ -267,12 +279,12 @@ class SengokuTui(App):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:  # pragma: no cover
         if event.button.id == "refresh":
-            await self.refresh_data(force=True)
+            self._schedule_refresh(force=True)
 
     async def on_select_changed(self, event: Select.Changed) -> None:  # pragma: no cover
         if event.select.id == "provider":
             self.config.provider = event.value
-            await self.refresh_data(force=True)
+            self._schedule_refresh(force=True)
 
     async def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:  # pragma: no cover
         symbol = event.row_key
@@ -285,7 +297,7 @@ class SengokuTui(App):
             self._update_top_n(event.value)
         elif event.input.id == "features_path":
             self.config.features_path = Path(event.value)
-            await self.refresh_data(force=True)
+            self._schedule_refresh(force=True)
 
     def _update_interval(self, value: str) -> None:
         try:
@@ -296,6 +308,7 @@ class SengokuTui(App):
         self.config.tick_interval = seconds
         if self._timer is not None:
             self._timer.reset(self.refresh_interval)
+        self._schedule_refresh(force=True)
 
     def _update_top_n(self, value: str) -> None:
         try:
@@ -303,7 +316,21 @@ class SengokuTui(App):
         except ValueError:
             return
         self.config.top_n = top_n
-        asyncio.create_task(self.refresh_data(force=True))
+        self._schedule_refresh(force=True)
+
+    def _schedule_refresh(self, force: bool = False) -> None:
+        if self._pending_refresh is not None and not self._pending_refresh.done():
+            if not force:
+                return
+            self._pending_refresh.cancel()
+        task = asyncio.create_task(self.refresh_data(force=force))
+
+        def _clear(completed: asyncio.Task) -> None:
+            if self._pending_refresh is completed:
+                self._pending_refresh = None
+
+        task.add_done_callback(_clear)
+        self._pending_refresh = task
 
 
 def run(config: UIConfig | None = None) -> None:

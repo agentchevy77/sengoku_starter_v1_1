@@ -91,9 +91,9 @@ def benchmark_data_processing() -> None:
 
     print(f"Pandas:  {pandas_time:.3f}s")
     print(f"Polars:  {polars_time:.3f}s ({pandas_time/polars_time:.1f}x faster)")
-    top_pd = result_pd.index[0] if not result_pd.empty else "n/a"
+    top_pd = "n/a" if result_pd.empty else result_pd.index[0]
 
-    top_pl = result_pl[0, "symbol"] if result_pl.height > 0 else "n/a"
+    top_pl = "n/a" if result_pl.height == 0 else result_pl[0, "symbol"]
     print(f"Top symbol (pandas vs polars): {top_pd} / {top_pl}")
 
 
@@ -140,6 +140,8 @@ def benchmark_numba() -> None:
 
     def monte_carlo_pi_python(n: int) -> float:
         """Calculate pi using Monte Carlo method (pure Python)."""
+        if n <= 0:
+            return 0.0
         count = 0
         for _ in range(n):
             x = np.random.random()
@@ -151,6 +153,8 @@ def benchmark_numba() -> None:
     @jit(nopython=True)
     def monte_carlo_pi_numba(n: int) -> float:
         """Calculate pi using Monte Carlo method (Numba JIT)."""
+        if n <= 0:
+            return 0.0
         count = 0
         for _ in range(n):
             x = np.random.random()

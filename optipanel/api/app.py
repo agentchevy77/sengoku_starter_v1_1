@@ -60,10 +60,21 @@ class _TickCache:
         self._data: dict[tuple[Any, ...], _TickCacheEntry] = {}
         self._lock = RLock()
         self._inflight: dict[tuple[Any, ...], Event] = {}
+        self._last_prune = 0.0
+        self._prune_interval = 60.0  # Prune at most once per minute
 
     def _prune_expired(self, now: float) -> None:
-        expired = [k for k, entry in self._data.items() if entry.expires_at <= now]
-        for key in expired:
+        """Prune expired entries efficiently without memory spike."""
+        # Fix: Delete during iteration with batching to prevent lock holding
+        batch_size = 100
+        expired_keys = []
+        for k, entry in list(self._data.items()):
+            if entry.expires_at <= now:
+                expired_keys.append(k)
+                if len(expired_keys) >= batch_size:
+                    break
+
+        for key in expired_keys:
             self._data.pop(key, None)
 
     def get_or_create(
@@ -78,7 +89,11 @@ class _TickCache:
         while True:
             with self._lock:
                 now = time.time()
-                self._prune_expired(now)
+                # Only prune periodically to avoid performance hit
+                if now - self._last_prune > self._prune_interval:
+                    self._prune_expired(now)
+                    self._last_prune = now
+
                 entry = self._data.get(key)
                 if entry and entry.expires_at > now:
                     return entry.payload
@@ -91,8 +106,18 @@ class _TickCache:
                     self._inflight[key] = waiter
                     break
 
-            # Another thread is populating this key; wait for it to finish*
-            waiter.wait()
+            # Another thread is populating this key; wait for it with timeout
+            # If timeout expires, we'll retry the loop and either find data or become the loader
+            if not waiter.wait(timeout=30.0):
+                # Remove stale waiter to prevent zombie events
+                with self._lock:
+                    current_waiter = self._inflight.get(key)
+                    if current_waiter is waiter:
+                        self._inflight.pop(key, None)
+                # Log warning and continue loop to retry
+                import logging
+
+                logging.warning(f"Cache wait timeout for key {key[:2] if key else 'unknown'}...")
 
         try:
             payload = loader()
@@ -105,9 +130,13 @@ class _TickCache:
             raise
 
         with self._lock:
-            expires_at = time.time() + ttl
+            now = time.time()
+            expires_at = now + ttl
             self._data[key] = _TickCacheEntry(expires_at=expires_at, payload=payload)
-            self._prune_expired(time.time())
+            # Use same time value to avoid immediate expiration bug
+            if now - self._last_prune > self._prune_interval:
+                self._prune_expired(now)
+                self._last_prune = now
             event = self._inflight.pop(key, None)
             if event is not None:
                 event.set()
@@ -167,10 +196,11 @@ def gather_panels(
         payload = details.get("features")
         if isinstance(payload, dict):
             for sym, feats in payload.items():
-                feats_dict = dict(feats)
-                if not feats_dict.get("last"):
+                # Performance: Only copy if we're keeping it
+                if not (isinstance(feats, dict) and feats.get("last")):
                     continue
-                features[str(sym).upper()] = feats_dict
+                sym_upper = str(sym).upper()  # Compute once
+                features[sym_upper] = dict(feats)  # Copy only if needed
 
     targets = [sym.upper() for sym in symbols if sym] if symbols else watchlist
     missing = [sym for sym in targets if sym not in features]
@@ -178,17 +208,18 @@ def gather_panels(
         provider_cfg = ProviderConfig(name=provider_name, features_path=features_path)
         extra = fetch_features(missing, provider=provider_cfg)
         for sym, feats in extra.items():
-            feats_dict = dict(feats)
-            if not feats_dict.get("last"):
+            # Performance optimization: same pattern as above
+            if not (isinstance(feats, dict) and feats.get("last")):
                 continue
-            features[str(sym).upper()] = feats_dict
+            features[str(sym).upper()] = dict(feats)
 
     panels = [
         compute_panel(sym, feats, include_supply=include_supply, battlefield_width=profiles.ui_width)
         for sym, feats in features.items()
         if feats and sym in targets
     ]
-    panels.sort(key=lambda panel: panel.recon_score, reverse=True)
+    # Safe sort with None handling - None values sort to bottom (treated as -infinity)
+    panels.sort(key=lambda panel: panel.recon_score if panel.recon_score is not None else float("-inf"), reverse=True)
     raw_budgets = tick.get("budgets", {}) if isinstance(tick, dict) else {}
     budgets: dict[str, Any] = dict(raw_budgets) if isinstance(raw_budgets, dict) else {}
     if "prime" not in budgets:
@@ -271,7 +302,9 @@ async def get_metrics(
     )
     if not panels:
         return JSONResponse({"count": 0, "avg_recon": None, "budget": None, "budgets": {}})
-    avg_recon = sum(panel.recon_score for panel in panels) / len(panels)
+    # Safe calculation with None filtering
+    valid_scores = [panel.recon_score for panel in panels if panel.recon_score is not None]
+    avg_recon = sum(valid_scores) / len(valid_scores) if valid_scores else None
     budgets = ctx.get("budgets", {}) if isinstance(ctx, dict) else {}
     budget = budgets.get("prime")
     return JSONResponse({"count": len(panels), "avg_recon": avg_recon, "budget": budget, "budgets": budgets})

@@ -29,7 +29,8 @@ class Scheduler:
                 finally:
                     logger.info("Scheduler stopped task '%s'", pt.name)
 
-            asyncio.create_task(_stop_and_log(old_task))
+            cleanup = asyncio.create_task(_stop_and_log(old_task))
+            self.registry.track_task(cleanup)
         self.tasks[name] = task
         logger.info("Scheduler starting task '%s' interval=%.3fs", name, interval_sec)
         task.start()

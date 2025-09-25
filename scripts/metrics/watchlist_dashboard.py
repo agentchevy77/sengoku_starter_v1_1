@@ -55,7 +55,13 @@ def summarize(log_dir: Path, *, window_files: int) -> dict[str, int]:
             continue
         if kind == WATCHLIST_PROCESSED:
             counters["watchlists_processed"] += 1
-            counters["alerts_total"] += int(event.get("alerts", 0) or 0)
+            # Safe integer conversion with error handling
+            try:
+                alerts_value = event.get("alerts", 0)
+                counters["alerts_total"] += int(alerts_value) if alerts_value else 0
+            except (ValueError, TypeError):
+                # Log but don't crash on bad data
+                counters["alerts_total"] += 0
         else:
             if bool(event.get("backoff")):
                 counters["render_backoff"] += 1

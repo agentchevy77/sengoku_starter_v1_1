@@ -59,3 +59,32 @@ async def test_scheduler_job_failure_logged_and_recovers(caplog):
     assert any("PeriodicTask noisy failure" in rec.message for rec in caplog.records)
 
     await scheduler.stop()
+
+
+class RecordingRegistry(AsyncResourceRegistry):
+    def __init__(self) -> None:
+        super().__init__()
+        self.tracked: list[asyncio.Task] = []
+
+    def track_task(self, task: asyncio.Task) -> None:  # pragma: no cover - exercised in tests
+        self.tracked.append(task)
+        super().track_task(task)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_replacement_tracks_cleanup_tasks():
+    reg = RecordingRegistry()
+    cache = TTLCache(max_items=4, default_ttl_sec=10)
+    scheduler = Scheduler(registry=reg, cache=cache)
+
+    async def job():
+        await asyncio.sleep(0)
+
+    scheduler.add_job("prime", 0.01, job)
+    await asyncio.sleep(0.05)
+
+    scheduler.add_job("prime", 0.01, job)
+
+    assert reg.tracked, "replacement should track cleanup tasks"
+
+    await scheduler.stop()
