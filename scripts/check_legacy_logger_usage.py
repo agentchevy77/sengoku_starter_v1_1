@@ -32,7 +32,10 @@ def check_for_legacy_usage(log_dir: Path, days_back: int = 1) -> int:
         for log_file in sorted(log_dir.glob("events-*.jsonl")):
             # Skip files older than cutoff (based on filename)
             try:
-                date_str = log_file.stem.split("-")[1]
+                parts = log_file.stem.split("-", 1)
+                if len(parts) < 2:
+                    raise ValueError("missing date segment")
+                date_str = parts[1]
                 file_date = datetime.strptime(date_str, "%Y%m%d")
                 if file_date < cutoff_time.replace(hour=0, minute=0, second=0, microsecond=0):
                     continue

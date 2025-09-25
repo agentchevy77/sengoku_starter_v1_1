@@ -35,6 +35,7 @@ class AsyncResourceRegistry:
 
     def track_task(self, task: asyncio.Task) -> None:
         self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     def track_closer(self, obj: Any) -> None:
         self._closers.add(obj)

@@ -30,7 +30,7 @@ def compute_units(features: dict) -> dict[str, dict[str, int]]:
         units["support"] = {"bull": 50, "bear": 50}
 
     # Resistance: bear if within 1% above last
-    if (resistance - last) / last <= 0.01:
+    if last and (resistance - last) / last <= 0.01:
         units["resistance"] = {"bull": 25, "bear": 75}
     else:
         units["resistance"] = {"bull": 60, "bear": 40}

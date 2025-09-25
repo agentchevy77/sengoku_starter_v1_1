@@ -74,7 +74,8 @@ class PerformanceMonitor:
         if len(recent) < 2:
             return 0
 
-        time_span = now - recent[0]
+        first = recent[0] if recent else now
+        time_span = now - first
         return len(recent) / time_span if time_span > 0 else 0
 
     def get_latency_stats(self) -> dict:

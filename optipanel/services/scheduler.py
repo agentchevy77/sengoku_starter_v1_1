@@ -21,7 +21,15 @@ class Scheduler:
         task = PeriodicTask(coro_func, interval_sec, self.registry, name=name)
         if name in self.tasks:
             logger.info("Scheduler replacing task '%s'", name)
-            asyncio.create_task(self.tasks[name].stop())
+            old_task = self.tasks.pop(name)
+
+            async def _stop_and_log(pt: PeriodicTask) -> None:
+                try:
+                    await pt.stop()
+                finally:
+                    logger.info("Scheduler stopped task '%s'", pt.name)
+
+            asyncio.create_task(_stop_and_log(old_task))
         self.tasks[name] = task
         logger.info("Scheduler starting task '%s' interval=%.3fs", name, interval_sec)
         task.start()
