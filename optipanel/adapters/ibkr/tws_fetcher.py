@@ -126,6 +126,7 @@ class _HistApp(_BaseApp):
         self._done: dict[int, threading.Event] = {}
         self._lock = threading.Lock()
         self._results: dict[int, list[tuple[str, float, float, float, float, int]]] = {}
+        self._thread: threading.Thread | None = None  # Track the run thread
 
     # ---- request bookkeeping -------------------------------------------------
     def register_request(self, req_id: int) -> threading.Event:
@@ -174,6 +175,14 @@ class _HistApp(_BaseApp):
             if done_evt is not None and not done_evt.is_set():
                 done_evt.set()
             return list(bars)
+
+    def cleanup(self) -> None:
+        """Properly disconnect and clean up the thread."""
+        self.disconnect()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+            if self._thread.is_alive():
+                logger.warning("TWS thread failed to terminate gracefully during cleanup")
 
     def release(self, reqId: int) -> None:
         with self._lock:
@@ -292,24 +301,49 @@ class RealTwsFetcher:
         record("ibkr.connect.attempts")
         with timer("ibkr.handshake.ms"):
             app = _HistApp()
+            thread = None
             try:
                 app.connect(self.cfg.host, self.cfg.port, clientId=self.cfg.client_id)
-                t = threading.Thread(target=app.run, name="tws-run", daemon=True)
-                t.start()
+                # Use non-daemon thread to ensure proper cleanup
+                thread = threading.Thread(target=app.run, name="tws-run", daemon=False)
+                thread.start()
+
                 if not app.ready.wait(self.cfg.handshake_timeout):
+                    # Handshake timeout - clean up thread properly
+                    logger.debug("TWS handshake timeout, disconnecting and cleaning up thread")
                     app.disconnect()
+
+                    # Wait for thread to terminate with timeout
+                    if thread and thread.is_alive():
+                        thread.join(timeout=1.0)
+                        if thread.is_alive():
+                            logger.warning("TWS thread failed to terminate gracefully after disconnect")
+
                     self._last_error = (
                         f"handshake timeout host={self.cfg.host} port={self.cfg.port} id={self.cfg.client_id}"
                     )
                     raise TimeoutError(self._last_error)
+
+                # Store thread reference for cleanup in app
+                app._thread = thread
                 self._last_ok = time.time()
                 self._last_error = None
-            except Exception:
+
+            except Exception as e:
                 # Clean up connection and thread on any exception
+                logger.debug(f"TWS connection failed: {e}, cleaning up")
                 with suppress(Exception):
                     app.disconnect()
+
+                # Ensure thread is properly terminated
+                if thread and thread.is_alive():
+                    thread.join(timeout=1.0)
+                    if thread.is_alive():
+                        logger.warning("TWS thread failed to terminate after exception")
+
                 record("ibkr.connect.fail")
                 raise
+
         record("ibkr.connect.ok")
         return app
 
@@ -325,7 +359,7 @@ class RealTwsFetcher:
                 "last_ok": self._last_ok,
             }
         finally:
-            app.disconnect()
+            app.cleanup()
 
     # ---------- daily bars (LRU + dynamic TTL) ----------
     def _next_id(self) -> int:
@@ -473,7 +507,7 @@ class RealTwsFetcher:
                 out[s]["bundles"] = {"1d": dict(base_features)}
             return out
         finally:
-            app.disconnect()
+            app.cleanup()
 
     # legacy callable form
     def __call__(self, symbols: list[str]) -> dict[str, dict[str, Any]]:

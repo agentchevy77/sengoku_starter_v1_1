@@ -53,6 +53,10 @@ class FakeHistSession:
     def disconnect(self) -> None:  # pragma: no cover - interface parity only
         pass
 
+    def cleanup(self) -> None:  # pragma: no cover - interface parity with _HistApp
+        """Mock cleanup method for compatibility with updated _HistApp."""
+        self.disconnect()
+
 
 def _expected_features(closes: list[float], ref_closes: list[float]) -> dict[str, float]:
     last = closes[-1]

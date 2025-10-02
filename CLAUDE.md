@@ -16,6 +16,23 @@ Extracted 60+ hardcoded magic numbers into centralized `SetupConfig` dataclass:
 
 This completes the SetupConfig refactoring from Rebuild1.md Phase 1.
 
+### 2025-10-02: Thread Leak Fix in TWS Fetcher
+**Status**: ✅ **COMPLETE**
+
+Fixed critical thread leak in `RealTwsFetcher._connect` method:
+- **Problem**: Daemon threads were not properly terminated on connection failures, causing thread accumulation
+- **Symptoms**: Threads named "tws-run" would leak on each failed connection attempt
+- **Fix**:
+  - Changed from `daemon=True` to `daemon=False` threads
+  - Added proper `thread.join(timeout=1.0)` in all failure paths
+  - Created `cleanup()` method in `_HistApp` for consistent cleanup
+  - Updated all `disconnect()` calls to use `cleanup()` instead
+- **Impact**: No more thread leaks on connection failures or disconnects
+- **Testing**: TWS fetcher tests pass, thread leak verification confirms fix
+- **Files**: `optipanel/adapters/ibkr/tws_fetcher.py:291-362`, `tests/test_tws_fetcher_features.py:56-58`
+
+This was the third and final surgical fix from Rebuild1.md Phase 1.
+
 ### 2025-10-02: Cache Race Condition Fix
 **Status**: ✅ **COMPLETE**
 
@@ -346,12 +363,12 @@ These files document the V3 experiment but should NOT be integrated:
    - **Result**: No more TypeError exceptions in background thread
    - **Validation**: All TWS tests pass, production fetching works perfectly
 
-**Remaining Bugs to Fix** (from Rebuild1.md):
+**All Critical Bugs Fixed** (from Rebuild1.md Phase 1):
 1. ✅ **Cache race conditions in `_TickCache._prune_expired`** - **FIXED** (2025-10-02)
-2. ⏳ Thread leaks in `RealTwsFetcher._connect` method
-3. ⏳ Potential improvements to error handling and connection management
+2. ✅ **Thread leaks in `RealTwsFetcher._connect` method** - **FIXED** (2025-10-02)
+3. ✅ **Error handler signature mismatch** - **FIXED** (2025-10-02, commit ce3b6e9)
 
-**Next Steps**: Apply remaining surgical fixes to `RealTwsFetcher` as needed.
+All three surgical fixes from the third-party analysis have been successfully implemented.
 
 ---
 
