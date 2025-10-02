@@ -2,6 +2,72 @@
 
 ## Recent Changes
 
+### 2025-10-02: Argparse Boolean Flag Environment Variable Precedence Fix (Bug #13)
+**Status**: ✅ **COMPLETE**
+
+Fixed critical bug in unified configuration layer where boolean CLI flags prevented environment variable fallback:
+
+**The Problem**:
+- Boolean flags using `action="store_true"` always returned `False` when omitted
+- ConfigResolver received `cli_value=False` instead of `cli_value=None`
+- This caused CLI flags to ALWAYS take precedence over environment variables
+- Environment variables like `SENGOKU_NOTIFY_INCLUDE_SUPPLY` were ignored
+
+**Root Cause Analysis**:
+```python
+# Argparse behavior with action="store_true"
+args = parser.parse_args([])  # Flag NOT provided
+print(args.include_supply)     # False (not None!)
+
+# ConfigResolver logic
+if cli_value is not None:  # False is not None!
+    return bool(cli_value)  # Returns False, never checks env var
+```
+
+**The Elite Solution**:
+Changed boolean flags from `action="store_true"` to `action="store_const"` with explicit `default=None`:
+```python
+# Before (BUG)
+ap.add_argument("--include-supply", action="store_true")
+# args.include_supply = False when omitted (blocks env vars)
+
+# After (FIXED)
+ap.add_argument("--include-supply", action="store_const", const=True, default=None)
+# args.include_supply = None when omitted (allows env var fallback)
+```
+
+**Flags Updated**:
+1. `--include-supply` in:
+   - `alerts_main`
+   - `notify_main`
+   - `recon_main`
+   - Unified main dispatch
+2. `--require-acceptance` in:
+   - `notify_main`
+   - Unified main dispatch
+3. `--pretty` in:
+   - `recon_main`
+   - Unified main dispatch
+
+**Testing Results**:
+- ✅ All 365 tests pass
+- ✅ 86% code coverage (exceeds 61% requirement)
+- ✅ `test_notify_supply_opt_in` now correctly respects `SENGOKU_NOTIFY_INCLUDE_SUPPLY=1`
+- ✅ Environment variable precedence works: CLI > ENV > default
+
+**Test Fixes**:
+- `test_driver_main_reports_invalid_profile_json` - Updated to provide valid symbols JSON
+- `test_tws_fetcher_unit.py` - Added `cleanup()`, `is_alive()`, `join()` to test mocks for thread leak fix compatibility
+
+**Files**:
+- `optipanel/cli/main.py` - Updated 3 boolean flags across multiple commands
+- `tests/test_cli_json_errors.py` - Updated test expectations
+- `tests/test_tws_fetcher_unit.py` - Enhanced test mocks
+
+**Commit**: e5206d1
+
+---
+
 ### 2025-10-02: Unified CLI Configuration and Validation Layer (Bugs #11 & #12)
 **Status**: ✅ **COMPLETE**
 
@@ -401,9 +467,16 @@ Nine critical fixes successfully implemented:
    - Provides structured error info with type, message, and connection details
    - Files: `optipanel/adapters/ibkr/tws_fetcher.py:333-340`, `tests/test_tws_stale_error_fix.py`
 
+10. ✅ **Argparse Boolean Flag Precedence** (Issue #13 - 2025-10-02, commit e5206d1)
+   - Fixed boolean flags blocking environment variable fallback
+   - Changed from `action="store_true"` to `action="store_const"` with `default=None`
+   - Updated `--include-supply`, `--require-acceptance`, `--pretty` across all commands
+   - Environment variables now properly respected: CLI > ENV > default
+   - Files: `optipanel/cli/main.py`, `tests/test_cli_json_errors.py`, `tests/test_tws_fetcher_unit.py`
+
 ### Pending Issues (Documented for Future Work)
 **Priority Breakdown**:
-- 🟡 **3 MEDIUM**: Race conditions, performance (Issues #3, #6, #7, #8)
+- 🟡 **4 MEDIUM**: Race conditions, performance (Issues #3, #6, #7, #8)
 - 🟢 **2 LOW**: Minor inefficiencies (Issues #1, #4)
 
 **Recommended Fix Order**:
