@@ -96,13 +96,24 @@ class _BaseApp(EWrapper, EClient):
         self.ready = threading.Event()
         self.errors: list[tuple[int, str]] = []
 
-    def error(self, reqId, code, msg, advancedOrderRejectJson=""):
+    def error(self, reqId: int, errorTime: int, errorCode: int, errorString: str, advancedOrderRejectJson=""):
+        """Handle errors from TWS API.
+
+        Updated for ibapi 10.37.2+ which added errorTime parameter.
+
+        Args:
+            reqId: Request ID that caused the error
+            errorTime: Timestamp of error from TWS (epoch seconds)
+            errorCode: TWS error code
+            errorString: Human-readable error message
+            advancedOrderRejectJson: Optional JSON with advanced order rejection details
+        """
         from contextlib import suppress
 
         with suppress(Exception):
-            record(f"ibkr.error.{code}")
-        if code not in self._NON_FATAL:
-            self.errors.append((code, str(msg)))
+            record(f"ibkr.error.{errorCode}")
+        if errorCode not in self._NON_FATAL:
+            self.errors.append((errorCode, str(errorString)))
 
     def nextValidId(self, orderId):
         self.ready.set()
