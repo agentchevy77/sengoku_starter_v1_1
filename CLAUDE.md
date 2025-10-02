@@ -2,6 +2,31 @@
 
 ## Recent Changes
 
+### 2025-10-02: Comprehensive Bug Analysis and Surgical Fixes
+**Status**: ✅ **COMPLETE**
+
+**Summary**: Completed all three critical surgical fixes from Rebuild1.md Phase 1, plus comprehensive masterclass debugging analysis identifying 8 additional verified bugs for future remediation.
+
+**Fixes Implemented Today**:
+1. **Cache race condition** in `_TickCache._prune_expired` (commit e588c1c)
+2. **Thread leak** in `RealTwsFetcher._connect` (commit 9e4c4d2)
+3. **Error handler signature** was fixed earlier (commit ce3b6e9)
+
+**Bugs Documented for Future Fixes**:
+- 8 verified bugs across TWS fetcher and API layers (see Known Issues section below)
+- 1 critical HIGH-priority cache invalidation bug
+- 5 medium-priority bugs (race conditions, performance, diagnostics)
+- 2 low-priority efficiency issues
+- 1 false positive verified and documented
+
+**Testing**: All tests pass, thread leak verification successful, concurrent stress testing confirms fixes.
+
+**Commits**:
+- e588c1c: fix: Resolve cache race condition in _TickCache._prune_expired
+- 9e4c4d2: fix: Resolve thread leak in RealTwsFetcher._connect
+- 7aeaa31: docs: Document known issues in TWS fetcher for future fixes
+- 5aa97ac: docs: Document critical API layer bugs for future fixes
+
 ### 2025-10-02: SetupConfig Refactoring (commit 66fa459)
 **Status**: ✅ **COMPLETE**
 
@@ -143,6 +168,43 @@ The following bugs have been identified and verified through code analysis. They
 
 ### Verified False Positive
 **Bug Report #4 (Stale Cache Fallback)**: Reported as logic flaw, but analysis confirms the `finally` block correctly executes `app.release(req_id)` even when TimeoutError is raised. Code is correct as-is.
+
+---
+
+## Bug Remediation Summary
+
+### Completed Fixes (2025-10-02)
+Three critical surgical fixes from Rebuild1.md Phase 1 have been successfully implemented:
+
+1. ✅ **TWS Error Handler Signature** (commit ce3b6e9)
+   - Fixed ibapi 10.37.2 compatibility issue
+   - Eliminated background thread TypeErrors
+
+2. ✅ **Cache Race Condition** (commit e588c1c)
+   - Thread-safe iteration in `_TickCache._prune_expired`
+   - Prevents "dictionary changed size during iteration" errors
+
+3. ✅ **Thread Leak in TWS Fetcher** (commit 9e4c4d2)
+   - Proper thread lifecycle management with non-daemon threads
+   - Added `cleanup()` method and `thread.join()` in all failure paths
+
+### Pending Issues (Documented for Future Work)
+**Priority Breakdown**:
+- 🔴 **1 HIGH**: Critical cache invalidation (Issue #5)
+- 🟡 **5 MEDIUM**: Race conditions, performance, diagnostics (Issues #2, #3, #6, #7, #8)
+- 🟢 **2 LOW**: Minor inefficiencies (Issues #1, #4)
+
+**Recommended Fix Order**:
+1. Issue #5 (HIGH) - Cache invalidation breaks dynamic configuration
+2. Issue #2 (MEDIUM) - Stale error state causes diagnostic confusion
+3. Issue #3 (MEDIUM) - Pacing metrics race condition
+4. Issue #7 (MEDIUM) - Thundering herd on cache loader failure
+5. Issue #8 (MEDIUM) - Shallow copy state corruption risk
+6. Issue #6 (MEDIUM) - Memory spike in cache pruning
+7. Issue #4 (LOW) - Inefficient reference symbol fetching
+8. Issue #1 (LOW) - Unbounded error accumulation
+
+**Analysis Methodology**: All bugs were verified through systematic code review, tracing execution paths, examining thread safety, and validating against actual code behavior. Each issue includes precise locations, severity rationale, impact analysis, and concrete fix proposals.
 
 ---
 
