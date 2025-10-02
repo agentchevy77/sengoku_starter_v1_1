@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import Event, RLock
@@ -167,10 +169,21 @@ def gather_panels(
 ) -> tuple[list[PanelSnapshot], dict[str, Any]]:
     profiles = load_profiles(profiles_path)
     watchlist = combine_watchlists(profiles)
+
+    # Include file modification times in cache key to detect config changes
+    profiles_mtime = None
+    features_mtime = None
+    with suppress(OSError, AttributeError):
+        profiles_mtime = os.path.getmtime(profiles_path) if profiles_path.exists() else None
+    with suppress(OSError, AttributeError):
+        features_mtime = os.path.getmtime(features_path) if features_path.exists() else None
+
     key = (
         str(profiles_path),
+        profiles_mtime,  # Will invalidate cache when file changes
         provider_name,
         str(features_path),
+        features_mtime,  # Will invalidate cache when file changes
         profiles.ui_width,
         profiles.top_n,
     )

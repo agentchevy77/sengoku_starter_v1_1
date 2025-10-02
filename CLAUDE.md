@@ -189,14 +189,17 @@ The following bugs have been identified and verified through code analysis. They
 - **Proposed Fix**: Either include ref in output OR skip fetching if not in input symbols
 
 ### Issue #5: Critical Cache Invalidation Failure (High Priority)
-**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+**Status**: ✅ **FIXED** (2025-10-02)
 
 - **Location**: `optipanel/api/app.py:170-176` (`gather_panels` cache key)
-- **Problem**: Cache key uses file paths as strings, not file content or modification times
+- **Problem**: Cache key used file paths as strings, not file content or modification times
 - **Severity**: **HIGH - Critical design flaw**
-- **Impact**: When users modify `profiles.yaml` or `features.yaml`, API continues serving stale cached data because cache key (file path) hasn't changed. Only way to refresh is to restart entire API server.
-- **Example**: User updates watchlist in profiles.yaml → API still shows old watchlist from cache
-- **Proposed Fix**: Include file modification time (`os.path.getmtime()`) or content hash in cache key
+- **Impact**: When users modified `profiles.yaml` or `features.yaml`, API continued serving stale cached data because cache key (file path) hadn't changed. Only way to refresh was to restart entire API server.
+- **Example**: User updates watchlist in profiles.yaml → API still showed old watchlist from cache
+- **Fix Applied**: Cache key now includes file modification times (`os.path.getmtime()`) for both profiles and features files
+- **Implementation**: Added mtime extraction with graceful error handling for missing files
+- **Testing**: 5 comprehensive tests added in `tests/test_cache_invalidation_fix.py`
+- **Files**: `optipanel/api/app.py:160-192`, `tests/test_cache_invalidation_fix.py`
 
 ### Issue #6: Memory Spike in Cache Pruning (Medium Priority)
 **Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
@@ -283,7 +286,7 @@ The following bugs have been identified and verified through code analysis. They
 ## Bug Remediation Summary
 
 ### Completed Fixes (2025-10-02)
-Four critical fixes successfully implemented:
+Five critical fixes successfully implemented:
 
 1. ✅ **TWS Error Handler Signature** (commit ce3b6e9)
    - Fixed ibapi 10.37.2 compatibility issue
@@ -303,24 +306,28 @@ Four critical fixes successfully implemented:
    - Added comprehensive diagnostics (error type, message, traceback)
    - Files: `optipanel/cli/main.py:352-395`, `tests/test_cli_health.py:156-228`
 
+5. ✅ **Critical Cache Invalidation** (Issue #5 - 2025-10-02)
+   - Fixed cache key to include file modification times
+   - Config changes now immediately reflected without API restart
+   - Added robust error handling for missing files
+   - Files: `optipanel/api/app.py:160-192`, `tests/test_cache_invalidation_fix.py`
+
 ### Pending Issues (Documented for Future Work)
 **Priority Breakdown**:
-- 🔴 **1 HIGH**: Critical cache invalidation (Issue #5)
 - 🟡 **6 MEDIUM**: Race conditions, performance, diagnostics, config (Issues #2, #3, #6, #7, #8, #10, #11)
 - 🟢 **3 LOW**: Minor inefficiencies and fragile patterns (Issues #1, #4, #12)
 
 **Recommended Fix Order**:
-1. Issue #5 (HIGH) - Cache invalidation breaks dynamic configuration
-2. Issue #10 (MEDIUM) - Input schema validation for better error messages
-3. Issue #11 (MEDIUM) - Centralized configuration management
-4. Issue #2 (MEDIUM) - Stale error state causes diagnostic confusion
-5. Issue #3 (MEDIUM) - Pacing metrics race condition
-6. Issue #7 (MEDIUM) - Thundering herd on cache loader failure
-7. Issue #8 (MEDIUM) - Shallow copy state corruption risk
-8. Issue #6 (MEDIUM) - Memory spike in cache pruning
-9. Issue #12 (LOW) - Defensive copying for alert enrichment
-10. Issue #4 (LOW) - Inefficient reference symbol fetching
-11. Issue #1 (LOW) - Unbounded error accumulation
+1. Issue #10 (MEDIUM) - Input schema validation for better error messages
+2. Issue #11 (MEDIUM) - Centralized configuration management
+3. Issue #2 (MEDIUM) - Stale error state causes diagnostic confusion
+4. Issue #3 (MEDIUM) - Pacing metrics race condition
+5. Issue #7 (MEDIUM) - Thundering herd on cache loader failure
+6. Issue #8 (MEDIUM) - Shallow copy state corruption risk
+7. Issue #6 (MEDIUM) - Memory spike in cache pruning
+8. Issue #12 (LOW) - Defensive copying for alert enrichment
+9. Issue #4 (LOW) - Inefficient reference symbol fetching
+10. Issue #1 (LOW) - Unbounded error accumulation
 
 **Analysis Methodology**: All bugs were verified through systematic code review, tracing execution paths, examining thread safety, and validating against actual code behavior. Each issue includes precise locations, severity rationale, impact analysis, and concrete fix proposals.
 
