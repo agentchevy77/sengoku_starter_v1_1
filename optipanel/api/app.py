@@ -64,18 +64,17 @@ class _TickCache:
         self._prune_interval = 60.0  # Prune at most once per minute
 
     def _prune_expired(self, now: float) -> None:
-        """Prune expired entries efficiently without memory spike."""
-        # Fix: Delete during iteration with batching to prevent lock holding
-        batch_size = 100
-        expired_keys = []
-        for k, entry in list(self._data.items()):
-            if entry.expires_at <= now:
-                expired_keys.append(k)
-                if len(expired_keys) >= batch_size:
-                    break
+        """Prune expired entries efficiently and thread-safely.
 
-        for key in expired_keys:
-            self._data.pop(key, None)
+        This method must be called while holding self._lock to ensure thread safety.
+        It iterates over a copy of items to prevent race conditions during pruning.
+        """
+        # Thread-safe iteration: list() creates a snapshot copy of items
+        # This prevents RuntimeError: dictionary changed size during iteration
+        # Note: This method assumes it's called while holding self._lock
+        for k, v in list(self._data.items()):
+            if v.expires_at <= now:
+                self._data.pop(k, None)
 
     def get_or_create(
         self,

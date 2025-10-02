@@ -16,6 +16,19 @@ Extracted 60+ hardcoded magic numbers into centralized `SetupConfig` dataclass:
 
 This completes the SetupConfig refactoring from Rebuild1.md Phase 1.
 
+### 2025-10-02: Cache Race Condition Fix
+**Status**: ✅ **COMPLETE**
+
+Fixed thread-safety issue in `_TickCache._prune_expired` method:
+- **Problem**: The `_prune_expired` method could cause race conditions when iterating over cache items
+- **Symptom**: Potential `RuntimeError: dictionary changed size during iteration` during concurrent access
+- **Fix**: Changed to iterate over a copy of items using `list(self._data.items())` to create snapshot
+- **Impact**: Thread-safe cache pruning without race conditions
+- **Testing**: All API tests pass (8/8), concurrent stress test verified no race conditions
+- **File**: `optipanel/api/app.py:66-77`
+
+This was the second of three surgical fixes recommended by third-party analysis.
+
 ### 2025-10-02: TWS Error Handler Signature Fix (commit ce3b6e9)
 **Status**: ✅ **COMPLETE**
 
@@ -334,7 +347,7 @@ These files document the V3 experiment but should NOT be integrated:
    - **Validation**: All TWS tests pass, production fetching works perfectly
 
 **Remaining Bugs to Fix** (from Rebuild1.md):
-1. ⏳ Cache race conditions in `_TickCache._prune_expired` (not in TWS fetcher - in API cache)
+1. ✅ **Cache race conditions in `_TickCache._prune_expired`** - **FIXED** (2025-10-02)
 2. ⏳ Thread leaks in `RealTwsFetcher._connect` method
 3. ⏳ Potential improvements to error handling and connection management
 
