@@ -2,6 +2,67 @@
 
 ## Recent Changes
 
+### 2025-10-02: CLI Health Check Critical Bug Fix (Bug #10)
+**Status**: ✅ **COMPLETE**
+
+Fixed critical silent failure in health check command where connection failures were suppressed:
+
+**The Problem**:
+- `health_main()` used `suppress(Exception)` around `fetcher.handshake_test()`
+- If TWS connection failed, exception was silently swallowed
+- Health check would report stale metrics as "healthy" - false positive
+- Operators had no way to detect TWS connectivity issues
+
+**The Elite Solution**:
+Implemented three-state health reporting:
+1. **Not Checked** - `--ping` flag not used, handshake skipped
+2. **Healthy** - `--ping` succeeded with connection details
+3. **Failed** - `--ping` failed with full diagnostics (error message, type, traceback)
+
+**Implementation**:
+```python
+# Before (BUG):
+if ping:
+    with suppress(Exception):  # Silent failure!
+        fetcher.handshake_test()
+
+# After (FIX):
+ping_status: dict[str, Any] = {"checked": False}
+if ping:
+    try:
+        handshake_result = fetcher.handshake_test()
+        ping_status = {"checked": True, "status": "healthy", "handshake": handshake_result}
+    except Exception as e:
+        import traceback
+        ping_status = {
+            "checked": True,
+            "status": "failed",
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
+        }
+ibkr_info["ping"] = ping_status
+```
+
+**Testing**:
+- Added 3 comprehensive tests in `tests/test_cli_health.py`:
+  - `test_health_main_ping_failure_is_reported` - Verifies failures are captured
+  - `test_health_main_ping_success_is_reported` - Verifies success reporting
+  - `test_health_main_no_ping_not_checked` - Verifies not-checked state
+- All 9 health tests pass
+
+**Impact**:
+- ✅ Connection failures now properly reported in JSON output
+- ✅ Operators can detect TWS connectivity issues
+- ✅ Full diagnostic info (error type, message, traceback) for debugging
+- ✅ Backward compatible - existing behavior preserved when `--ping` not used
+
+**Files Modified**:
+- `optipanel/cli/main.py:352-395` - Fixed health_main()
+- `tests/test_cli_health.py:156-228` - Added comprehensive test coverage
+
+This was Bug #10 from the CLI masterclass debugging analysis.
+
 ### 2025-10-02: Comprehensive Bug Analysis and Surgical Fixes
 **Status**: ✅ **COMPLETE**
 
@@ -166,6 +227,54 @@ The following bugs have been identified and verified through code analysis. They
 - **Example**: Feature dict has `{"bundles": {"1d": {...}}}` - shallow copy only copies reference to `bundles` dict
 - **Proposed Fix**: Use `copy.deepcopy(feats)` to ensure complete isolation between consumers
 
+### Issue #9: Critical Silent Failure in Health Check (High Priority)
+**Status**: ✅ **FIXED** (2025-10-02)
+
+- **Location**: `optipanel/cli/main.py:357-361` (`health_main` function)
+- **Problem**: `suppress(Exception)` wrapper silently swallowed all handshake failures
+- **Severity**: HIGH - Critical operational flaw
+- **Impact**: Health checks reported "healthy" when TWS was unreachable - false positive that misled operators
+- **Fix Applied**: Replaced exception suppression with proper three-state reporting (not_checked, healthy, failed) with full diagnostics
+- **Files**: `optipanel/cli/main.py:352-395`, `tests/test_cli_health.py:156-228`
+
+### Issue #10: Lack of Input Schema Validation (Medium Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/cli/main.py:79-86` (`_load_json_arg`)
+- **Problem**: Function validates JSON syntax but not structure/schema
+- **Severity**: Medium - Poor user experience
+- **Impact**: Users can provide valid JSON with wrong structure (e.g., `{"symbol": "AAPL"}` instead of `{"AAPL": {"last": 150.0, ...}}`). Results in cryptic errors deep in business logic (`KeyError: 'last'`) instead of clear validation errors at input boundary.
+- **Proposed Fix**: Add schema validation using `jsonschema` or custom validators after JSON parsing
+
+### Issue #11: Inconsistent Configuration Logic (Medium Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: Throughout `optipanel/cli/main.py`
+- **Problem**: Configuration handling is decentralized and inconsistent:
+  - `notify_main` (line 950-953): Complex custom env var merging logic
+  - `alerts_main` (line 346): Simple `or os.getenv("SENGOKU_ALERTS_INCLUDE_SUPPLY", "") == "1"`
+  - `profiles_live_cmd` (line 826-833): Different TWS connection settings pattern
+  - `notify_main` uses `_env_truth()` helper for booleans (line 945-948)
+  - `alerts_main` uses string comparison `== "1"`
+- **Severity**: Medium - Unpredictable behavior
+- **Impact**: No clear precedence order (CLI args vs env vars). Different boolean parsing strategies across commands. Operators cannot determine which config values take effect. Makes debugging configuration issues difficult.
+- **Proposed Fix**: Create centralized configuration loader with consistent precedence (CLI > env > defaults) and unified type conversion
+
+### Issue #12: Unsafe In-Place Data Mutation (Low Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/cli/main.py:908-923` (`notify_cmd`)
+- **Problem**: Code passes alerts list to enrichment functions that may mutate in-place:
+  ```python
+  alerts = run.get("alerts")
+  alerts = enrich_alerts_with_supply_sustain(base_snaps, alerts, ...)
+  alerts = enrich_alerts_with_gate(base_snaps, alerts, ...)
+  run["alerts"] = alerts
+  ```
+- **Severity**: Low - Depends on enrich function implementations
+- **Impact**: If enrich functions mutate in-place, creates risk of unexpected side effects when other code holds references to original alerts list. Even if safe now, pattern is fragile and vulnerable to future breakage.
+- **Proposed Fix**: Check if enrich functions mutate input. Add defensive copying for robustness regardless.
+
 ### Verified False Positive
 **Bug Report #4 (Stale Cache Fallback)**: Reported as logic flaw, but analysis confirms the `finally` block correctly executes `app.release(req_id)` even when TimeoutError is raised. Code is correct as-is.
 
@@ -174,7 +283,7 @@ The following bugs have been identified and verified through code analysis. They
 ## Bug Remediation Summary
 
 ### Completed Fixes (2025-10-02)
-Three critical surgical fixes from Rebuild1.md Phase 1 have been successfully implemented:
+Four critical fixes successfully implemented:
 
 1. ✅ **TWS Error Handler Signature** (commit ce3b6e9)
    - Fixed ibapi 10.37.2 compatibility issue
@@ -188,21 +297,30 @@ Three critical surgical fixes from Rebuild1.md Phase 1 have been successfully im
    - Proper thread lifecycle management with non-daemon threads
    - Added `cleanup()` method and `thread.join()` in all failure paths
 
+4. ✅ **CLI Health Check Silent Failure** (Issue #9 - 2025-10-02)
+   - Fixed critical bug where `suppress(Exception)` hid TWS connection failures
+   - Implemented three-state reporting (not_checked, healthy, failed)
+   - Added comprehensive diagnostics (error type, message, traceback)
+   - Files: `optipanel/cli/main.py:352-395`, `tests/test_cli_health.py:156-228`
+
 ### Pending Issues (Documented for Future Work)
 **Priority Breakdown**:
 - 🔴 **1 HIGH**: Critical cache invalidation (Issue #5)
-- 🟡 **5 MEDIUM**: Race conditions, performance, diagnostics (Issues #2, #3, #6, #7, #8)
-- 🟢 **2 LOW**: Minor inefficiencies (Issues #1, #4)
+- 🟡 **6 MEDIUM**: Race conditions, performance, diagnostics, config (Issues #2, #3, #6, #7, #8, #10, #11)
+- 🟢 **3 LOW**: Minor inefficiencies and fragile patterns (Issues #1, #4, #12)
 
 **Recommended Fix Order**:
 1. Issue #5 (HIGH) - Cache invalidation breaks dynamic configuration
-2. Issue #2 (MEDIUM) - Stale error state causes diagnostic confusion
-3. Issue #3 (MEDIUM) - Pacing metrics race condition
-4. Issue #7 (MEDIUM) - Thundering herd on cache loader failure
-5. Issue #8 (MEDIUM) - Shallow copy state corruption risk
-6. Issue #6 (MEDIUM) - Memory spike in cache pruning
-7. Issue #4 (LOW) - Inefficient reference symbol fetching
-8. Issue #1 (LOW) - Unbounded error accumulation
+2. Issue #10 (MEDIUM) - Input schema validation for better error messages
+3. Issue #11 (MEDIUM) - Centralized configuration management
+4. Issue #2 (MEDIUM) - Stale error state causes diagnostic confusion
+5. Issue #3 (MEDIUM) - Pacing metrics race condition
+6. Issue #7 (MEDIUM) - Thundering herd on cache loader failure
+7. Issue #8 (MEDIUM) - Shallow copy state corruption risk
+8. Issue #6 (MEDIUM) - Memory spike in cache pruning
+9. Issue #12 (LOW) - Defensive copying for alert enrichment
+10. Issue #4 (LOW) - Inefficient reference symbol fetching
+11. Issue #1 (LOW) - Unbounded error accumulation
 
 **Analysis Methodology**: All bugs were verified through systematic code review, tracing execution paths, examining thread safety, and validating against actual code behavior. Each issue includes precise locations, severity rationale, impact analysis, and concrete fix proposals.
 

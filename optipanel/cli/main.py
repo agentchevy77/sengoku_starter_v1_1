@@ -354,13 +354,31 @@ def health_main(*, ping: bool = False) -> int:
     from optipanel.runtime.health import get_ibkr_health, get_runtime_health
 
     fetcher = RealTwsFetcher(cfg_from_env())
-    if ping:
-        from contextlib import suppress
 
-        with suppress(Exception):
-            fetcher.handshake_test()
+    # Active health check: Three-state reporting (not_checked, healthy, failed)
+    ping_status: dict[str, Any] = {"checked": False}
+    if ping:
+        try:
+            handshake_result = fetcher.handshake_test()
+            ping_status = {
+                "checked": True,
+                "status": "healthy",
+                "handshake": handshake_result,
+            }
+        except Exception as e:
+            # Capture failure details for diagnostics
+            import traceback
+
+            ping_status = {
+                "checked": True,
+                "status": "failed",
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc(),
+            }
 
     ibkr_info = get_ibkr_health(fetcher)
+    ibkr_info["ping"] = ping_status
     pacing_metrics = fetcher.pacing_metrics()
     ibkr_info["pacing"] = pacing_metrics
     pacing_overrides = load_thresholds_from_env()

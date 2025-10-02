@@ -151,3 +151,78 @@ def test_main_health_subcommand(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     json.loads(out)  # should parse without error
+
+
+def test_health_main_ping_failure_is_reported(monkeypatch, capsys):
+    """Bug #10 Fix: Verify that handshake failures are captured and reported, not suppressed."""
+
+    class FailingFetcher(DummyFetcher):
+        def handshake_test(self):
+            self._handshake_calls += 1
+            raise ConnectionRefusedError("TWS not reachable at 127.0.0.1:7496")
+
+    dummy_cfg = object()
+    monkeypatch.setattr(ibkr_mod, "cfg_from_env", lambda: dummy_cfg, raising=False)
+    failing_fetcher = FailingFetcher(dummy_cfg)
+    monkeypatch.setattr(ibkr_mod, "RealTwsFetcher", lambda cfg: failing_fetcher, raising=False)
+
+    # Health check should NOT raise exception, but should report failure in output
+    rc = health_main(ping=True)
+    assert rc == 0
+    assert failing_fetcher._handshake_calls == 1
+
+    # Verify failure is reported in JSON output
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    ping_status = data["ibkr"]["ping"]
+
+    # Critical assertions: ping must report the failure
+    assert ping_status["checked"] is True
+    assert ping_status["status"] == "failed"
+    assert ping_status["error_type"] == "ConnectionRefusedError"
+    assert "TWS not reachable" in ping_status["error"]
+    assert "traceback" in ping_status  # Include traceback for diagnostics
+
+
+def test_health_main_ping_success_is_reported(monkeypatch, capsys):
+    """Verify that successful pings are properly reported."""
+
+    dummy_cfg = object()
+    monkeypatch.setattr(ibkr_mod, "cfg_from_env", lambda: dummy_cfg, raising=False)
+    dummy_fetcher = DummyFetcher(dummy_cfg)
+    monkeypatch.setattr(ibkr_mod, "RealTwsFetcher", lambda cfg: dummy_fetcher, raising=False)
+
+    rc = health_main(ping=True)
+    assert rc == 0
+    assert dummy_fetcher._handshake_calls == 1
+
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    ping_status = data["ibkr"]["ping"]
+
+    # Verify success is properly reported
+    assert ping_status["checked"] is True
+    assert ping_status["status"] == "healthy"
+    assert ping_status["handshake"]["handshake"] == "ok"
+    assert "error" not in ping_status
+
+
+def test_health_main_no_ping_not_checked(monkeypatch, capsys):
+    """Verify that without --ping flag, handshake is not checked."""
+
+    dummy_cfg = object()
+    monkeypatch.setattr(ibkr_mod, "cfg_from_env", lambda: dummy_cfg, raising=False)
+    dummy_fetcher = DummyFetcher(dummy_cfg)
+    monkeypatch.setattr(ibkr_mod, "RealTwsFetcher", lambda cfg: dummy_fetcher, raising=False)
+
+    rc = health_main(ping=False)
+    assert rc == 0
+    assert dummy_fetcher._handshake_calls == 0
+
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    ping_status = data["ibkr"]["ping"]
+
+    # Verify not checked state
+    assert ping_status["checked"] is False
+    assert "status" not in ping_status
