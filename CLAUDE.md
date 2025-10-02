@@ -102,6 +102,45 @@ The following bugs have been identified and verified through code analysis. They
 - **Example**: If ref="SPY" and symbols=["AAPL","MSFT"], fetches SPY but only returns AAPL/MSFT
 - **Proposed Fix**: Either include ref in output OR skip fetching if not in input symbols
 
+### Issue #5: Critical Cache Invalidation Failure (High Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/api/app.py:170-176` (`gather_panels` cache key)
+- **Problem**: Cache key uses file paths as strings, not file content or modification times
+- **Severity**: **HIGH - Critical design flaw**
+- **Impact**: When users modify `profiles.yaml` or `features.yaml`, API continues serving stale cached data because cache key (file path) hasn't changed. Only way to refresh is to restart entire API server.
+- **Example**: User updates watchlist in profiles.yaml → API still shows old watchlist from cache
+- **Proposed Fix**: Include file modification time (`os.path.getmtime()`) or content hash in cache key
+
+### Issue #6: Memory Spike in Cache Pruning (Medium Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/api/app.py:75` (`_TickCache._prune_expired`)
+- **Problem**: Creates full copy of all cache items with `list(self._data.items())`
+- **Severity**: Medium - Could cause performance issues under high load
+- **Impact**: For caches with hundreds of thousands of entries, creating temporary list of all items causes memory spike during cleanup
+- **Proposed Fix**: Collect only expired keys first, then delete: `expired = [k for k, v in self._data.items() if v.expires_at <= now]` then iterate to delete
+
+### Issue #7: Thundering Herd on Loader Failure (Medium Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/api/app.py:121-129` (`_TickCache.get_or_create` exception handler)
+- **Problem**: When `loader()` fails, all waiting threads wake up and simultaneously try to become new loaders
+- **Severity**: Medium - Defeats cache's concurrency control purpose
+- **Impact**: If loader fails, all N waiting threads stampede to retry loader simultaneously, multiplying load on failing backend
+- **Flow**: Loader fails → `event.set()` wakes all waiters → they loop back → all see `waiter is None` → all call `loader()` at once
+- **Proposed Fix**: Track failure state temporarily to prevent immediate retries, or use exponential backoff
+
+### Issue #8: Shallow Copy State Corruption Risk (Medium Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/api/app.py:202` (`gather_panels` feature copying)
+- **Problem**: Uses shallow copy `dict(feats)` when features contain nested dicts (e.g., `bundles: {1d: {...}}`)
+- **Severity**: Medium - Latent architectural fragility
+- **Impact**: Multiple consumers share references to nested mutable objects. Modifications to nested structures cause unintended side effects across different data consumers.
+- **Example**: Feature dict has `{"bundles": {"1d": {...}}}` - shallow copy only copies reference to `bundles` dict
+- **Proposed Fix**: Use `copy.deepcopy(feats)` to ensure complete isolation between consumers
+
 ### Verified False Positive
 **Bug Report #4 (Stale Cache Fallback)**: Reported as logic flaw, but analysis confirms the `finally` block correctly executes `app.release(req_id)` even when TimeoutError is raised. Code is correct as-is.
 
