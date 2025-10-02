@@ -237,7 +237,7 @@ def test_handshake_test_disconnects(monkeypatch, base_cfg):
     fetcher = RealTwsFetcher(base_cfg)
     result = fetcher.handshake_test()
 
-    assert last["app"].disconnect_called is True
+    assert last["app"].cleanup_called is True
     assert result == {
         "host": base_cfg.host,
         "port": base_cfg.port,
@@ -315,6 +315,7 @@ class DummyApp:
         self.connect_args: tuple[str, int, int] | None = None
         self.run_called = False
         self.disconnect_called = False
+        self.cleanup_called = False
 
     def connect(self, host: str, port: int, clientId: int) -> None:  # noqa: N803 (match ibapi signature)
         self.connect_args = (host, port, clientId)
@@ -325,6 +326,11 @@ class DummyApp:
     def disconnect(self) -> None:
         self.disconnect_called = True
 
+    def cleanup(self) -> None:
+        """Cleanup method for compatibility with updated fetcher."""
+        self.cleanup_called = True
+        self.disconnect()
+
 
 class DummyThread:
     def __init__(self, target, name: str, daemon: bool):
@@ -332,10 +338,17 @@ class DummyThread:
         self.name = name
         self.daemon = daemon
         self.started = False
+        self._alive = True
 
     def start(self) -> None:
         self.started = True
         self.target()
+
+    def is_alive(self) -> bool:
+        return self._alive
+
+    def join(self, timeout=None) -> None:
+        self._alive = False
 
 
 def test_cfg_from_env_uses_secret_resolver(tmp_path, monkeypatch):

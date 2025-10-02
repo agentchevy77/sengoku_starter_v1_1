@@ -370,7 +370,9 @@ def alerts_main(argv=None):
     ap.add_argument("--symbols-json", required=True)
     ap.add_argument(
         "--include-supply",
-        action="store_true",
+        action="store_const",
+        const=True,
+        default=None,
         help="Include supply lines in alert payloads",
     )
     args = ap.parse_args(argv)
@@ -642,9 +644,17 @@ def main(argv=None):
     nt = sub.add_parser("notify", help="Aggregate alerts into a deduped event list")
     nt.add_argument("--symbols-json", required=True)
     nt.add_argument("--iterations", type=int, default=2)
-    nt.add_argument("--require-acceptance", action="store_true", help="Drop alerts unless gate=go")
+    nt.add_argument(
+        "--require-acceptance", action="store_const", const=True, default=None, help="Drop alerts unless gate=go"
+    )
     nt.add_argument("--ready-min", type=int, default=None, help="Readiness threshold for gate=go (default 65)")
-    nt.add_argument("--include-supply", action="store_true", help="Include SUPPLY lines in alert payloads")
+    nt.add_argument(
+        "--include-supply",
+        action="store_const",
+        const=True,
+        default=None,
+        help="Include SUPPLY lines in alert payloads",
+    )
     rc = sub.add_parser("recon", help="Compute recon chips composite")
     rc.add_argument("--symbols", required=True)
     rc.add_argument("--provider", choices=["tws-live", "mock"], default="tws-live")
@@ -655,9 +665,9 @@ def main(argv=None):
         default="prob",
         help="Recon lens for chips-by-timeframe",
     )
-    rc.add_argument("--include-supply", action="store_true")
+    rc.add_argument("--include-supply", action="store_const", const=True, default=None)
     rc.add_argument("--json-include", default="")
-    rc.add_argument("--pretty", action="store_true")
+    rc.add_argument("--pretty", action="store_const", const=True, default=None)
     prl = sub.add_parser("profiles-live", help="Run profiles with a provider (mock for now)")
     prl.add_argument("--profiles-yaml", required=True)
     prl.add_argument("--provider", default="mock", choices=["mock", "tws-mock", "tws-live"])
@@ -985,13 +995,17 @@ def notify_main(argv=None):
     import argparse
 
     ap = argparse.ArgumentParser(prog="sengoku notify")
-    ap.add_argument("--require-acceptance", action="store_true", help="drop alerts unless gate=go")
+    ap.add_argument(
+        "--require-acceptance", action="store_const", const=True, default=None, help="drop alerts unless gate=go"
+    )
     ap.add_argument("--ready-min", type=int, default=None, help="readiness threshold for gate=go (default 65)")
     ap.add_argument("--symbols-json", required=True)
     ap.add_argument("--iterations", type=int, default=2)
     ap.add_argument(
         "--include-supply",
-        action="store_true",
+        action="store_const",
+        const=True,
+        default=None,
         help="Include SUPPLY lines in alert payloads",
     )
     args = ap.parse_args(argv)
@@ -1046,8 +1060,12 @@ def recon_main(argv=None):
         default="prob",
         help="Recon lens for chips-by-timeframe (prob canonical, micro for scout)",
     )
-    ap.add_argument("--pretty", action="store_true", help="Pretty-print recon view instead of JSON")
-    ap.add_argument("--include-supply", action="store_true", help="Include supply factors in JSON output")
+    ap.add_argument(
+        "--pretty", action="store_const", const=True, default=None, help="Pretty-print recon view instead of JSON"
+    )
+    ap.add_argument(
+        "--include-supply", action="store_const", const=True, default=None, help="Include supply factors in JSON output"
+    )
     ap.add_argument("--json-include", default="", help="Comma list of extras (e.g. chips_summary)")
     args = ap.parse_args(argv)
 

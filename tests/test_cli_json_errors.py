@@ -23,9 +23,10 @@ def test_cli_json_arguments_fail_with_clear_error(entrypoint, args, label, capsy
 
 
 def test_driver_main_reports_invalid_profile_json(capsys):
+    # Provide valid symbols JSON so we reach profile validation
     args = [
         "--symbols-json",
-        "{}",
+        '{"AAPL": {"last": 150.0}}',
         "--profile-json",
         "{",
     ]
