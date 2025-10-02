@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+### 2025-10-02: SetupConfig Refactoring (commit 66fa459)
+**Status**: ✅ **COMPLETE**
+
+Extracted 60+ hardcoded magic numbers into centralized `SetupConfig` dataclass:
+- **Problem**: Hardcoded thresholds (0.01, 85.0, etc.) scattered throughout compute_setups()
+- **Impact**: Hard to read, maintain, and test different configurations
+- **Solution**: Created `SetupConfig` dataclass with 87 named parameters
+- **Backward Compatibility**: 100% compatible - config parameter is optional
+- **Testing**: 13/13 tests pass, including 6 characterization tests proving mathematical equivalence
+- **Coverage**: 97% (153/158 lines)
+- **Files**: `optipanel/setups/engine.py`, `tests/test_setups_engine_refactor.py`
+
+This completes the SetupConfig refactoring from Rebuild1.md Phase 1.
+
 ### 2025-10-02: TWS Error Handler Signature Fix (commit ce3b6e9)
 **Status**: ✅ **COMPLETE**
 
@@ -164,7 +178,7 @@ except Exception as e:
 - Experimental `TwsFetcherV3` awaiting validation (not integrated)
 - `ibapi 10.37.2` in `.venv` (up-to-date)
 
-### The SetupConfig Refactoring (COMPLETED 2025-10-01)
+### The SetupConfig Refactoring (COMPLETED 2025-10-02, commit 66fa459)
 
 **Problem**: `optipanel/setups/engine.py` originally contained dozens of hardcoded numeric thresholds (e.g., `0.01`, `85.0`, `60.0`, `1.2`, `0.1`) that made the code:
 - Hard to read (no context for what numbers mean)
@@ -205,7 +219,11 @@ def compute_setups(features: dict[str, Any], config: SetupConfig | None = None) 
 - `optipanel/setups/engine.py` - Added SetupConfig, refactored compute_setups()
 - `tests/test_setups_engine_refactor.py` - Characterization tests
 
-**Status**: ✅ **COMPLETE** - Validated via comprehensive test suite
+**Status**: ✅ **COMPLETE** - Committed 2025-10-02 (commit 66fa459)
+- 13/13 tests pass (6 characterization + 7 original)
+- 97% test coverage
+- 100% backward compatible
+- Black/ruff formatting passes
 
 ---
 
