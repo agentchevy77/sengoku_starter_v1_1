@@ -330,8 +330,16 @@ class RealTwsFetcher:
                 self._last_error = None
 
             except Exception as e:
+                # CRITICAL FIX: Always update _last_error with current exception info
+                # This prevents stale error state from previous failures
+                error_type = type(e).__name__
+                error_msg = str(e)
+                self._last_error = (
+                    f"{error_type}: {error_msg} " f"(host={self.cfg.host} port={self.cfg.port} id={self.cfg.client_id})"
+                )
+
                 # Clean up connection and thread on any exception
-                logger.debug(f"TWS connection failed: {e}, cleaning up")
+                logger.debug(f"TWS connection failed: {self._last_error}, cleaning up")
                 with suppress(Exception):
                     app.disconnect()
 

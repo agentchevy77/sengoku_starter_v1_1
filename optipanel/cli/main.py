@@ -18,6 +18,7 @@ from optipanel.alerts.engine import DEFAULT_THRESH, analyze_batch_with_supply
 from optipanel.chips.daily import compute_microchips_daily
 from optipanel.chips.h60 import compute_microchips_h60
 from optipanel.chips.m15 import compute_microchips_m15
+from optipanel.cli.config import ConfigResolver, InputValidator, ValidationError
 from optipanel.engine.aggregate import build_symbol_snapshot
 from optipanel.engine.scan import run_local_scan
 from optipanel.monitoring import evaluate_pacing_alerts, load_thresholds_from_env
@@ -76,14 +77,45 @@ _SUPPLY_ORDER = (
 )
 
 
-def _load_json_arg(raw: str, label: str) -> Any:
-    """Parse CLI JSON arguments with helpful error messages."""
+def _load_json_arg(raw: str, label: str, validator: str | None = None) -> Any:
+    """Parse and validate CLI JSON arguments with helpful error messages.
 
+    Args:
+        raw: Raw JSON string from CLI
+        label: Human-readable label for error messages
+        validator: Optional validator type ("symbols", "features", "profile")
+
+    Returns:
+        Parsed and validated JSON data
+
+    Raises:
+        SystemExit: On JSON parse or validation errors with clear messages
+    """
+    # Parse JSON
     try:
-        return json.loads(raw)
+        data = json.loads(raw)
     except (TypeError, ValueError) as exc:
-        print(f"Error: invalid {label} JSON payload ({exc}).", file=sys.stderr)
+        print(f"Error: invalid {label} JSON syntax ({exc}).", file=sys.stderr)
         raise SystemExit(2) from exc
+
+    # Validate structure if validator specified
+    if validator:
+        try:
+            if validator == "symbols":
+                return InputValidator.validate_symbols_json(data)
+            elif validator == "features":
+                return InputValidator.validate_features_json(data)
+            elif validator == "profile":
+                return InputValidator.validate_profile_json(data)
+        except ValidationError as exc:
+            print(f"Error: invalid {label} structure - {exc}", file=sys.stderr)
+            if exc.field:
+                print(f"  Field: {exc.field}", file=sys.stderr)
+            if exc.details:
+                print(f"  Details: {exc.details}", file=sys.stderr)
+            raise SystemExit(2) from exc
+
+    return data
 
 
 def tui_main(argv=None):
@@ -317,7 +349,7 @@ def snapshot_main(argv=None):
     ap.add_argument("--symbol", required=True)
     ap.add_argument("--features-json", required=True)
     args = ap.parse_args(argv)
-    features = _load_json_arg(args.features_json, "features")
+    features = _load_json_arg(args.features_json, "features", validator="features")
     snap = build_symbol_snapshot(args.symbol, features)
     print(json.dumps(snap, indent=2, sort_keys=True))
     return 0
@@ -327,7 +359,7 @@ def scan_main(argv=None):
     ap = argparse.ArgumentParser(prog="sengoku scan")
     ap.add_argument("--symbols-json", required=True)
     args = ap.parse_args(argv)
-    symbols = _load_json_arg(args.symbols_json, "symbols")
+    symbols = _load_json_arg(args.symbols_json, "symbols", validator="symbols")
     out = run_local_scan(symbols)
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0
@@ -342,8 +374,14 @@ def alerts_main(argv=None):
         help="Include supply lines in alert payloads",
     )
     args = ap.parse_args(argv)
-    symbols = _load_json_arg(args.symbols_json, "symbols")
-    include_supply = args.include_supply or os.getenv("SENGOKU_ALERTS_INCLUDE_SUPPLY", "") == "1"
+    symbols = _load_json_arg(args.symbols_json, "symbols", validator="symbols")
+
+    # Unified config: CLI > ENV > default
+    resolver = ConfigResolver()
+    include_supply = resolver.get_bool(
+        "include_supply", cli_value=args.include_supply, env_key="SENGOKU_ALERTS_INCLUDE_SUPPLY", default=False
+    )
+
     alerts = alerts_cmd(symbols, include_supply=include_supply)
     print(json.dumps(alerts, indent=2, sort_keys=True))
     return 0
@@ -458,8 +496,8 @@ def driver_main(argv=None):
     ap.add_argument("--ticks", type=int, default=5)
     ap.add_argument("--sleep", type=float, default=0.0)
     args = ap.parse_args(argv)
-    symbols = _load_json_arg(args.symbols_json, "symbols")
-    profile = _load_json_arg(args.profile_json, "profile")
+    symbols = _load_json_arg(args.symbols_json, "symbols", validator="symbols")
+    profile = _load_json_arg(args.profile_json, "profile", validator="profile")
     out = run_driver(symbols, profile, ticks=int(args.ticks))
     if args.sleep > 0:
         time.sleep(args.sleep)
@@ -836,19 +874,19 @@ def profiles_live_cmd(
 
     elif provider == "tws-live":
         # Real TWS fetch via ibapi; read connection from environment or globals
-        import os
-
         from optipanel.adapters.ibkr import RealTwsFetcher, RealTwsFetcherConfig
         from optipanel.adapters.ibkr.translator import translate_snapshots
 
-        host = tws_host or os.environ.get("SENGOKU_TWS_HOST") or "127.0.0.1"
-        port_env = os.environ.get("SENGOKU_TWS_PORT") if tws_port is None else tws_port
-        client_env = os.environ.get("SENGOKU_TWS_CLIENT_ID") if tws_client_id is None else tws_client_id
-        ref_symbol_env = os.environ.get("SENGOKU_TWS_REF") if tws_ref_symbol is None else tws_ref_symbol
-
-        port = int(port_env) if port_env is not None else 7496
-        client_id = int(client_env) if client_env is not None else 107
-        ref_symbol = str(ref_symbol_env) if ref_symbol_env is not None else "SPY"
+        # Unified config resolution: CLI > ENV > default
+        resolver = ConfigResolver()
+        host = resolver.get_str("tws_host", cli_value=tws_host, env_key="SENGOKU_TWS_HOST", default="127.0.0.1")
+        port = resolver.get_int("tws_port", cli_value=tws_port, env_key="SENGOKU_TWS_PORT", default=7496)
+        client_id = resolver.get_int(
+            "tws_client_id", cli_value=tws_client_id, env_key="SENGOKU_TWS_CLIENT_ID", default=107
+        )
+        ref_symbol = resolver.get_str(
+            "tws_ref_symbol", cli_value=tws_ref_symbol, env_key="SENGOKU_TWS_REF", default="SPY"
+        )
 
         cfg = RealTwsFetcherConfig(host=host, port=port, client_id=client_id, ref_symbol=ref_symbol)
         fetcher = RealTwsFetcher(cfg)
@@ -957,18 +995,29 @@ def notify_main(argv=None):
         help="Include SUPPLY lines in alert payloads",
     )
     args = ap.parse_args(argv)
-    symbols = _load_json_arg(args.symbols_json, "symbols")
-    include_supply = args.include_supply or os.getenv("SENGOKU_NOTIFY_INCLUDE_SUPPLY", "") == "1"
+    symbols = _load_json_arg(args.symbols_json, "symbols", validator="symbols")
 
-    def _env_truth(value: str | None) -> bool:
-        if not value:
-            return False
-        return value.strip().lower() in {"1", "true", "yes", "on"}
+    # Unified config resolution with clear precedence: CLI > ENV > default
+    resolver = ConfigResolver()
+    include_supply = resolver.get_bool(
+        "include_supply",
+        cli_value=args.include_supply,
+        env_key="SENGOKU_NOTIFY_INCLUDE_SUPPLY",
+        default=False,
+    )
+    require_acceptance = resolver.get_bool(
+        "require_acceptance",
+        cli_value=args.require_acceptance,
+        env_key="SENGOKU_NOTIFY_REQUIRE_ACCEPT",
+        default=False,
+    )
+    ready_min = resolver.get_int(
+        "ready_min",
+        cli_value=args.ready_min,
+        env_key="SENGOKU_NOTIFY_READY_MIN",
+        default=65,
+    )
 
-    env_accept = os.getenv("SENGOKU_NOTIFY_REQUIRE_ACCEPT")
-    require_acceptance = args.require_acceptance or _env_truth(env_accept)
-    env_ready = os.getenv("SENGOKU_NOTIFY_READY_MIN")
-    ready_min = args.ready_min if args.ready_min is not None else int(env_ready) if env_ready else 65
     out = notify_cmd(
         symbols,
         iterations=int(args.iterations),
