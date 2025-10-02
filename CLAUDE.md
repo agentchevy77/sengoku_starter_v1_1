@@ -61,6 +61,52 @@ This was the first of three surgical fixes recommended by third-party analysis t
 
 ---
 
+## Known Issues (Pending Fixes)
+
+The following bugs have been identified and verified through code analysis. They are documented here for future remediation:
+
+### Issue #1: Unbounded Error Accumulation (Low Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/adapters/ibkr/tws_fetcher.py:97,116` (`_BaseApp.errors`)
+- **Problem**: The `self.errors` list accumulates error tuples every time `error()` callback is invoked, but is never cleared
+- **Severity**: Low - App instances are short-lived (per fetch), so accumulation is limited
+- **Impact**: Minor memory growth during multi-symbol fetches with many non-fatal errors
+- **Proposed Fix**: Clear errors list after reading in `handshake_test()`, or implement a max size limit
+
+### Issue #2: Stale Error State (Medium Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/adapters/ibkr/tws_fetcher.py:322-345` (`_connect` exception handler)
+- **Problem**: `self._last_error` is cleared on successful connection but NOT on non-timeout exceptions
+- **Severity**: Medium - Causes misleading diagnostics
+- **Impact**: After a non-timeout connection failure, `_last_error` retains stale error from previous timeout
+- **Proposed Fix**: Add `self._last_error = str(e)` in the exception handler at line 332-345
+
+### Issue #3: Race Condition in Pacing Metrics (Medium Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/adapters/ibkr/tws_fetcher.py:277-282,525` (pacing metrics variables)
+- **Problem**: `_rate_wait_total` and `_rate_wait_events` modified/read without locks
+- **Severity**: Medium - Latent race condition
+- **Impact**: If `pacing_metrics()` called concurrently with `_pace_request()`, could return corrupted data
+- **Proposed Fix**: Add a threading.Lock to protect pacing metric variables, or make them atomic
+
+### Issue #4: Inefficient Symbol Fetching (Low Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/adapters/ibkr/tws_fetcher.py:436,472` (`features_for_symbols`)
+- **Problem**: Fetches reference symbol data but doesn't include it in output
+- **Severity**: Low - Inefficient but functionally correct
+- **Impact**: Wastes TWS API calls fetching ref symbol that gets discarded
+- **Example**: If ref="SPY" and symbols=["AAPL","MSFT"], fetches SPY but only returns AAPL/MSFT
+- **Proposed Fix**: Either include ref in output OR skip fetching if not in input symbols
+
+### Verified False Positive
+**Bug Report #4 (Stale Cache Fallback)**: Reported as logic flaw, but analysis confirms the `finally` block correctly executes `app.release(req_id)` even when TimeoutError is raised. Code is correct as-is.
+
+---
+
 ## Session Logging Requirements
 
 **IMPORTANT**: This project uses an enhanced session logging system. When implementing new features or modifying existing code, follow these guidelines:
