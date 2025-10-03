@@ -69,14 +69,21 @@ class _TickCache:
         """Prune expired entries efficiently and thread-safely.
 
         This method must be called while holding self._lock to ensure thread safety.
-        It iterates over a copy of items to prevent race conditions during pruning.
+        Uses a two-pass approach to minimize memory allocation:
+        1. Collect only expired keys (much smaller than full copy)
+        2. Delete expired entries
+
+        This avoids the memory spike from copying all items when only a subset are expired.
         """
-        # Thread-safe iteration: list() creates a snapshot copy of items
-        # This prevents RuntimeError: dictionary changed size during iteration
-        # Note: This method assumes it's called while holding self._lock
-        for k, v in list(self._data.items()):
-            if v.expires_at <= now:
-                self._data.pop(k, None)
+        # Two-pass approach for memory efficiency:
+        # Pass 1: Collect only expired keys (typically much smaller than all items)
+        expired_keys = [k for k, v in self._data.items() if v.expires_at <= now]
+
+        # Pass 2: Delete expired entries
+        # Using pop() with default to handle unlikely race condition where
+        # another thread somehow removed the key between passes
+        for k in expired_keys:
+            self._data.pop(k, None)
 
     def get_or_create(
         self,
