@@ -1,20 +1,26 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any
 
 from optipanel.setups.engine import compute_setups
+from optipanel.utils.decimal_types import (
+    D_ZERO,
+    to_decimal,
+    to_float,
+)
 
 
-def _coerce_price(value: Any) -> float | None:
-    """Return a finite positive price or ``None`` when input is unusable."""
+def _coerce_price(value: Any) -> Decimal | None:
+    """Return a finite positive price as Decimal or ``None`` when input is unusable.
 
-    try:
-        price = float(value)
-    except (TypeError, ValueError):
+    Uses Decimal for precise financial calculations.
+    """
+    price = to_decimal(value, default=None)  # type: ignore
+    if price is None:
         return None
-    if not math.isfinite(price) or price <= 0.0:
+    if not price.is_finite() or price <= D_ZERO:
         return None
     return price
 
@@ -37,26 +43,45 @@ class Trade:
     symbol: str
     side: str  # 'long'
     qty: int
-    entry_px: float
-    exit_px: float | None = None
-    pnl: float | None = None
+    entry_px: Decimal  # Precise price tracking with Decimal
+    exit_px: Decimal | None = None
+    pnl: Decimal | None = None  # Precise P&L tracking
+
+    def __post_init__(self):
+        """Ensure prices are always Decimal for backward compatibility."""
+        if not isinstance(self.entry_px, Decimal):
+            self.entry_px = to_decimal(self.entry_px, default=D_ZERO)
+        if self.exit_px is not None and not isinstance(self.exit_px, Decimal):
+            self.exit_px = to_decimal(self.exit_px, default=D_ZERO)
+        if self.pnl is not None and not isinstance(self.pnl, Decimal):
+            self.pnl = to_decimal(self.pnl, default=D_ZERO)
 
 
 @dataclass
 class Position:
     symbol: str
     qty: int
-    avg_px: float
+    avg_px: Decimal  # Precise average price tracking
+
+    def __post_init__(self):
+        """Ensure avg_px is always Decimal for backward compatibility."""
+        if not isinstance(self.avg_px, Decimal):
+            self.avg_px = to_decimal(self.avg_px, default=D_ZERO)
 
 
 @dataclass
 class PositionState:
-    cash: float = 100_000.0
+    cash: Decimal = Decimal("100000.00")  # Precise cash tracking with Decimal
     positions: dict[str, Position] = field(default_factory=dict)
     open_trades: list[Trade] = field(default_factory=list)
     closed_trades: list[Trade] = field(default_factory=list)
     cooldown: dict[str, int] = field(default_factory=dict)
     tick_index: int = 0
+
+    def __post_init__(self):
+        """Ensure cash is always Decimal for backward compatibility."""
+        if not isinstance(self.cash, Decimal):
+            self.cash = to_decimal(self.cash, default=Decimal("100000.00"))
 
     def _dec_cooldowns(self) -> None:
         to_clear = []
@@ -68,7 +93,8 @@ class PositionState:
         for s in to_clear:
             self.cooldown.pop(s, None)
 
-    def _should_exit(self, sym: str, last: float, setups: dict[str, int], th: dict[str, float]) -> bool:
+    def _should_exit(self, sym: str, last: Decimal, setups: dict[str, int], th: dict[str, float]) -> bool:
+        """Check exit conditions with precise Decimal calculations."""
         pos = self.positions.get(sym)
         if not pos:
             return False
@@ -77,12 +103,18 @@ class PositionState:
             return True
         if setups.get("trend_short", 0) >= th["exit_trend"]:
             return True
-        # stop / take
-        # Fixed: Proper zero check for floats (handles -0.0)
-        change = 0.0 if abs(pos.avg_px) < 1e-9 else (last / pos.avg_px) - 1.0
-        if change <= th["stop_loss"]:
+        # stop / take - using Decimal for precise percentage calculations
+        if abs(pos.avg_px) < Decimal("1e-9"):
+            change = D_ZERO
+        else:
+            change = (last / pos.avg_px) - Decimal("1")
+
+        stop_loss_d = Decimal(str(th["stop_loss"]))
+        take_profit_d = Decimal(str(th["take_profit"]))
+
+        if change <= stop_loss_d:
             return True
-        return change >= th["take_profit"]
+        return change >= take_profit_d
 
     def _should_enter_long(self, sym: str, setups: dict[str, int], th: dict[str, float]) -> bool:
         if sym in self.positions:
@@ -99,6 +131,8 @@ class PositionState:
     ) -> dict[str, Any]:
         """
         One discrete step: evaluate setups, generate entries/exits, update cash and positions.
+
+        Uses Decimal arithmetic for precise P&L and cash calculations to avoid floating-point errors.
         """
         th = thresholds or default_thresholds()
         self.tick_index += 1
@@ -116,7 +150,7 @@ class PositionState:
             setup_cache[sym] = setups
             return setups
 
-        # exits first (respect risk)
+        # exits first (respect risk) - using Decimal for precise P&L
         for sym in list(syms):
             pos = self.positions.get(sym)
             if not pos:
@@ -127,14 +161,16 @@ class PositionState:
                 continue
             setups = _get_setups(sym, f)
             if self._should_exit(sym, last, setups, th):
-                pnl = (last - pos.avg_px) * pos.qty
-                self.cash += pos.qty * last
+                # Precise P&L calculation with Decimal
+                pnl = (last - pos.avg_px) * Decimal(str(pos.qty))
+                self.cash += Decimal(str(pos.qty)) * last
                 self.closed_trades.append(Trade(sym, "long", pos.qty, pos.avg_px, last, pnl))
-                actions.append(f"EXIT {sym} x{pos.qty} @ {last:.2f} pnl={pnl:.2f}")
+                # Convert to float for display
+                actions.append(f"EXIT {sym} x{pos.qty} @ {to_float(last):.2f} pnl={to_float(pnl):.2f}")
                 del self.positions[sym]
                 self.cooldown[sym] = int(th["cooldown_ticks"])
 
-        # entries
+        # entries - using Decimal for precise cost calculations
         for sym in syms:
             if sym in self.positions:
                 continue
@@ -144,31 +180,34 @@ class PositionState:
                 continue
             setups = _get_setups(sym, f)
             if self._should_enter_long(sym, setups, th):
-                risk_cap = self.cash * float(th.get("risk_per_trade", 0.02))
+                risk_cap = self.cash * Decimal(str(th.get("risk_per_trade", 0.02)))
                 qty = max(0, int(risk_cap / last))
                 if qty <= 0:
                     continue
-                cost = qty * last
+                cost = Decimal(str(qty)) * last
                 if cost > self.cash:
                     qty = int(self.cash // last)
-                    cost = qty * last
+                    cost = Decimal(str(qty)) * last
                 if qty <= 0:
                     continue
                 self.cash -= cost
                 self.positions[sym] = Position(sym, qty, last)
                 self.open_trades.append(Trade(sym, "long", qty, last))
-                actions.append(f"BUY {sym} x{qty} @ {last:.2f}")
+                # Convert to float for display
+                actions.append(f"BUY {sym} x{qty} @ {to_float(last):.2f}")
 
+        # Calculate equity with precise Decimal arithmetic
         equity = self.cash
         for sym, pos in self.positions.items():
             last = _coerce_price(features.get(sym, {}).get("last"))
             if last is None:
                 continue
-            equity += pos.qty * last
+            equity += Decimal(str(pos.qty)) * last
+
         return {
             "i": self.tick_index,
-            "cash": round(self.cash, 2),
-            "equity": round(equity, 2),
-            "positions": {s: {"qty": p.qty, "avg_px": p.avg_px} for s, p in self.positions.items()},
+            "cash": round(to_float(self.cash), 2),
+            "equity": round(to_float(equity), 2),
+            "positions": {s: {"qty": p.qty, "avg_px": to_float(p.avg_px)} for s, p in self.positions.items()},
             "actions": actions,
         }

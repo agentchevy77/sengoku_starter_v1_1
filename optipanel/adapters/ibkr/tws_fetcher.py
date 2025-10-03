@@ -90,11 +90,15 @@ def cfg_from_env(resolver: SecretResolver | None = None) -> TwsConfig:
 
 class _BaseApp(EWrapper, EClient):
     _NON_FATAL = {2104, 2106, 2158}
+    # Bug #1 FIX: Bounded error accumulation to prevent memory leak
+    _MAX_ERRORS = int(os.getenv("SENGOKU_TWS_MAX_ERRORS", "100"))
 
     def __init__(self):
         EClient.__init__(self, self)
         self.ready = threading.Event()
-        self.errors: list[tuple[int, str]] = []
+        # Bug #1 FIX: Use deque with maxlen to automatically evict oldest errors
+        # This prevents unbounded memory growth in long-running processes
+        self.errors: deque[tuple[int, str]] = deque(maxlen=self._MAX_ERRORS)
 
     def error(self, reqId: int, errorTime: int, errorCode: int, errorString: str, advancedOrderRejectJson=""):
         """Handle errors from TWS API.
@@ -457,7 +461,15 @@ class RealTwsFetcher:
     def features_for_symbols(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
         syms = list(dict.fromkeys(symbols))
         ref = (self.cfg.ref_symbol or os.getenv("SENGOKU_TWS_REF", "SPY")) or "SPY"
-        all_syms = [ref] + [s for s in syms if s != ref]
+
+        # Bug #4 FIX: Only fetch reference symbol if it's in the requested symbols list
+        # This prevents wasting a network call when ref data isn't needed
+        if ref in syms:
+            # Reference symbol is requested, fetch it first
+            all_syms = [ref] + [s for s in syms if s != ref]
+        else:
+            # Reference symbol not requested, only fetch requested symbols
+            all_syms = list(syms)
 
         app = self._connect()
         try:
@@ -486,7 +498,8 @@ class RealTwsFetcher:
                     self.cfg.pacing_interval_sec,
                     self._last_latency,
                 )
-            # compute ref return
+            # Bug #4 FIX: Compute ref return only if ref was fetched
+            # If ref wasn't in the requested symbols, rs_strength will default to 0.0
             ref_bars = daily.get(ref, [])
             ref_close = ref_bars[-1][4] if ref_bars else None
             ref_ago = ref_bars[-21][4] if len(ref_bars) >= 21 else None

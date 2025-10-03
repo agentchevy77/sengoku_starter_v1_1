@@ -7,6 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+
+class ConfigurationFileError(Exception):
+    """Raised when a configuration file cannot be read due to I/O errors.
+
+    This exception wraps underlying OSError types (PermissionError, FileNotFoundError,
+    etc.) to provide actionable context for configuration loading failures.
+    """
+
+
 from optipanel.acceptance.engine import detect_breakout_acceptance
 from optipanel.battlefield.ascii import render_battlefield
 from optipanel.config.loader import parse_features_yaml, parse_profiles_yaml
@@ -84,7 +93,46 @@ def _ensure_path(path: str | Path | None, default: Path) -> Path:
 
 
 def _read_text(path: str | Path) -> str:
-    return Path(path).read_text(encoding="utf-8")
+    """Read text from a configuration file with comprehensive error handling.
+
+    Args:
+        path: Path to the configuration file (string or Path object)
+
+    Returns:
+        The file contents as a UTF-8 string
+
+    Raises:
+        ConfigurationFileError: When the file cannot be read due to:
+            - PermissionError: Insufficient permissions to read the file
+            - FileNotFoundError: File does not exist at the specified path
+            - IsADirectoryError: Path points to a directory, not a file
+            - OSError: Other I/O errors (disk errors, encoding issues, etc.)
+
+    The original exception is preserved in the exception chain for debugging.
+    """
+    file_path = Path(path)
+    abs_path = file_path.resolve()
+
+    try:
+        return file_path.read_text(encoding="utf-8")
+    except PermissionError as e:
+        msg = (
+            f"Permission denied when reading configuration file: {abs_path}\n"
+            f"Check that the file has read permissions for the current user."
+        )
+        raise ConfigurationFileError(msg) from e
+    except FileNotFoundError as e:
+        msg = f"Configuration file not found: {abs_path}\n" f"Verify the file path is correct and the file exists."
+        raise ConfigurationFileError(msg) from e
+    except IsADirectoryError as e:
+        msg = (
+            f"Expected a file but found a directory: {abs_path}\n"
+            f"Ensure the path points to a configuration file, not a directory."
+        )
+        raise ConfigurationFileError(msg) from e
+    except OSError as e:
+        msg = f"Failed to read configuration file: {abs_path}\n" f"I/O error occurred: {e}"
+        raise ConfigurationFileError(msg) from e
 
 
 def _canonical_provider(name: str) -> str:

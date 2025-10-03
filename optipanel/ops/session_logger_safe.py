@@ -1,9 +1,12 @@
-"""Thread-safe enhanced session logging with proper error handling."""
+"""Thread-safe and process-safe enhanced session logging with proper error handling."""
 
 from __future__ import annotations
 
+import fcntl
 import os
+import random
 import shutil
+import sys
 import threading
 import time
 import traceback
@@ -15,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from optipanel import json_utils as json
-from optipanel.ops.eventlog import EventLogger
+from optipanel.ops.eventlog import DurabilityLevel, EventLogger
 
 
 @dataclass
@@ -56,6 +59,7 @@ class SafeSessionLogger(EventLogger):
         command: str | None = None,
         max_metrics: int = 1000,
         max_context_depth: int = 100,
+        durability: DurabilityLevel | None = None,
     ) -> None:
         """Initialize thread-safe session logger.
 
@@ -65,8 +69,9 @@ class SafeSessionLogger(EventLogger):
             command: Command or operation name
             max_metrics: Maximum metrics to track (prevents memory leak)
             max_context_depth: Maximum context stack depth
+            durability: Log durability level (defaults to STANDARD)
         """
-        super().__init__(log_dir)
+        super().__init__(log_dir, durability=durability)
 
         # Thread safety
         self._lock = threading.RLock()  # Reentrant lock for nested calls
@@ -402,8 +407,134 @@ class SafeSessionLogger(EventLogger):
         return False  # Don't suppress original exception
 
 
+class ProcessSafeLock:
+    """Cross-process file-based lock for safe log rotation.
+
+    Uses fcntl on Unix systems for exclusive file locking across processes.
+    Implements exponential backoff with jitter for lock acquisition.
+    """
+
+    def __init__(self, lock_file: Path, timeout: float = 10.0, max_retries: int = 5):
+        """Initialize process-safe lock.
+
+        Args:
+            lock_file: Path to lock file
+            timeout: Maximum time to wait for lock acquisition
+            max_retries: Maximum number of retry attempts
+        """
+        self.lock_file = lock_file
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.lock_handle = None
+        self._local_lock = threading.RLock()  # Thread safety within process
+
+    def acquire(self) -> bool:
+        """Acquire lock with exponential backoff and jitter.
+
+        Returns:
+            True if lock acquired, False if timeout or failure
+        """
+        with self._local_lock:
+            if self.lock_handle is not None:
+                return True  # Already locked
+
+            start_time = time.time()
+            retry_count = 0
+            base_delay = 0.01  # 10ms initial delay
+
+            while time.time() - start_time < self.timeout:
+                try:
+                    # Ensure lock directory exists
+                    self.lock_file.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Open lock file (create if doesn't exist)
+                    self.lock_handle = open(self.lock_file, "a")
+
+                    # Try to acquire exclusive lock (non-blocking)
+                    fcntl.flock(self.lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+                    # Write PID for debugging
+                    self.lock_handle.seek(0)
+                    self.lock_handle.truncate()
+                    self.lock_handle.write(str(os.getpid()))
+                    self.lock_handle.flush()
+
+                    return True
+
+                except OSError:
+                    # Lock is held by another process
+                    if self.lock_handle:
+                        try:
+                            self.lock_handle.close()
+                        except Exception:
+                            pass
+                        self.lock_handle = None
+
+                    # Exponential backoff with jitter
+                    if retry_count < self.max_retries:
+                        delay = base_delay * (2**retry_count)
+                        jitter = random.uniform(0, delay * 0.1)  # 10% jitter
+                        time.sleep(min(delay + jitter, 1.0))  # Cap at 1 second
+                        retry_count += 1
+                    else:
+                        time.sleep(0.1)  # Fixed delay after max retries
+
+                except Exception as e:
+                    # Unexpected error
+                    if self.lock_handle:
+                        try:
+                            self.lock_handle.close()
+                        except Exception:
+                            pass
+                        self.lock_handle = None
+
+                    # Log error but continue trying
+                    try:
+                        sys.stderr.write(f"Lock acquisition error: {e}\\n")
+                    except Exception:
+                        pass
+
+                    time.sleep(0.1)
+
+            return False
+
+    def release(self) -> None:
+        """Release the lock."""
+        with self._local_lock:
+            if self.lock_handle:
+                try:
+                    # Release lock and close file
+                    fcntl.flock(self.lock_handle.fileno(), fcntl.LOCK_UN)
+                    self.lock_handle.close()
+                except Exception:
+                    pass
+                finally:
+                    self.lock_handle = None
+
+                # Try to remove lock file (best effort)
+                try:
+                    self.lock_file.unlink()
+                except Exception:
+                    pass
+
+    def __enter__(self):
+        """Context manager entry."""
+        if not self.acquire():
+            raise TimeoutError(f"Failed to acquire lock on {self.lock_file}")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.release()
+        return False
+
+
 class SafeLogRotationManager:
-    """Safe log rotation without data loss."""
+    """Safe log rotation without data loss, with multi-process safety.
+
+    Bug #30 FIX: Implements process-safe file locking to prevent race conditions
+    when multiple processes attempt to rotate the same log file simultaneously.
+    """
 
     def __init__(
         self,
@@ -412,14 +543,28 @@ class SafeLogRotationManager:
         max_age_days: int = 30,
         max_files: int = 100,
         buffer_size: int = 65536,  # 64KB buffer for file operations
+        lock_timeout: float = 10.0,  # Timeout for acquiring process lock
     ) -> None:
-        """Initialize safe log rotation manager."""
+        """Initialize safe log rotation manager with process-safe locking.
+
+        Args:
+            log_dir: Directory for log files
+            max_size_mb: Maximum file size before rotation
+            max_age_days: Maximum age of log files
+            max_files: Maximum number of log files to keep
+            buffer_size: Buffer size for file operations
+            lock_timeout: Timeout for acquiring process lock
+        """
         self._log_dir = Path(log_dir)
         self._max_size_bytes = max_size_mb * 1024 * 1024
         self._max_age_seconds = max_age_days * 24 * 3600
         self._max_files = max_files
         self._buffer_size = buffer_size
-        self._lock = threading.Lock()
+        self._lock_timeout = lock_timeout
+
+        # Create lock directory
+        self._lock_dir = self._log_dir / ".locks"
+        self._lock_dir.mkdir(parents=True, exist_ok=True)
 
     def should_rotate(self, file_path: Path) -> bool:
         """Check if rotation needed."""
@@ -431,33 +576,55 @@ class SafeLogRotationManager:
             return False
 
     def rotate_file_safe(self, file_path: Path) -> Path | None:
-        """Safely rotate file without data loss."""
-        with self._lock:
+        """Safely rotate file without data loss using process-safe locking.
+
+        Bug #30 FIX: Uses ProcessSafeLock to prevent concurrent rotation attempts
+        from multiple processes.
+        """
+        # Create lock file specific to this log file
+        lock_file = self._lock_dir / f"{file_path.name}.lock"
+        lock = ProcessSafeLock(lock_file, timeout=self._lock_timeout)
+
+        try:
+            # Acquire process-safe lock
+            if not lock.acquire():
+                # Failed to acquire lock - another process is rotating
+                sys.stderr.write(f"Failed to acquire rotation lock for {file_path}\\n")
+                return None
+
             try:
-                if not file_path.exists():
+                # Double-check file still exists and needs rotation
+                # (another process may have rotated it while we waited for lock)
+                if not file_path.exists() or not self.should_rotate(file_path):
                     return None
 
-                # Create rotation name
-                timestamp = int(time.time() * 1000000)  # Microseconds for uniqueness
-                rotated_name = f"{file_path.stem}.{timestamp}{file_path.suffix}"
+                # Generate unique rotation name with PID to avoid collisions
+                timestamp = int(time.time() * 1000000)  # Microseconds
+                pid = os.getpid()
+                rotated_name = f"{file_path.stem}.{timestamp}-{pid}{file_path.suffix}"
                 rotated_path = file_path.parent / rotated_name
 
-                # Use atomic rename (won't lose data)
+                # Use atomic rename when possible
                 try:
                     file_path.rename(rotated_path)
                 except OSError:
-                    # Fall back to copy if rename fails (cross-filesystem)
-                    shutil.copy2(file_path, rotated_path)
-                    file_path.unlink()
+                    # Fall back to copy if rename fails (e.g., cross-filesystem)
+                    try:
+                        shutil.copy2(file_path, rotated_path)
+                        # Only delete after successful copy
+                        file_path.unlink()
+                    except Exception as copy_error:
+                        sys.stderr.write(f"Failed to rotate {file_path}: {copy_error}\\n")
+                        return None
 
-                # Try compression in background (don't block)
+                # Try compression (non-blocking, best effort)
                 try:
                     import gzip
 
                     compressed_path = Path(f"{rotated_path}.gz")
 
                     # Stream compression to avoid memory issues
-                    with open(rotated_path, "rb") as f_in, gzip.open(compressed_path, "wb") as f_out:
+                    with open(rotated_path, "rb") as f_in, gzip.open(compressed_path, "wb", compresslevel=6) as f_out:
                         while True:
                             chunk = f_in.read(self._buffer_size)
                             if not chunk:
@@ -471,14 +638,32 @@ class SafeLogRotationManager:
                     # Compression failed, keep uncompressed
                     return rotated_path
 
-            except Exception:
-                return None
+            finally:
+                # Always release lock
+                lock.release()
+
+        except Exception as e:
+            sys.stderr.write(f"Rotation error for {file_path}: {e}\\n")
+            return None
 
     def cleanup_old_files_safe(self) -> list[str]:
-        """Safely cleanup old files."""
+        """Safely cleanup old files with process-safe locking.
+
+        Bug #30 FIX: Uses ProcessSafeLock for cleanup operations to prevent
+        concurrent cleanup attempts from interfering with each other.
+        """
         removed: list[str] = []
 
-        with self._lock:
+        # Use a global cleanup lock to prevent concurrent cleanup operations
+        lock_file = self._lock_dir / "cleanup.lock"
+        lock = ProcessSafeLock(lock_file, timeout=self._lock_timeout)
+
+        try:
+            # Acquire process-safe lock
+            if not lock.acquire():
+                sys.stderr.write("Failed to acquire cleanup lock, skipping cleanup\\n")
+                return removed
+
             try:
                 current_time = time.time()
 
@@ -492,8 +677,10 @@ class SafeLogRotationManager:
                     return removed
 
                 # Safe sort with error handling
-                with suppress(Exception):
+                try:
                     log_files.sort(key=lambda p: p.stat().st_mtime)
+                except Exception:
+                    pass  # Continue with unsorted if sort fails
 
                 # Remove old files
                 for file_path in log_files:
@@ -502,8 +689,17 @@ class SafeLogRotationManager:
                         age_seconds = current_time - stat.st_mtime
 
                         if age_seconds > self._max_age_seconds:
-                            file_path.unlink()
-                            removed.append(str(file_path))
+                            # Use file-specific lock for deletion
+                            delete_lock_file = self._lock_dir / f"{file_path.name}.delete.lock"
+                            delete_lock = ProcessSafeLock(delete_lock_file, timeout=1.0)
+
+                            if delete_lock.acquire():
+                                try:
+                                    if file_path.exists():  # Double-check
+                                        file_path.unlink()
+                                        removed.append(str(file_path))
+                                finally:
+                                    delete_lock.release()
                     except Exception:
                         continue  # Skip files we can't process
 
@@ -511,14 +707,48 @@ class SafeLogRotationManager:
                 remaining = [f for f in log_files if str(f) not in removed and f.exists()]
                 if len(remaining) > self._max_files:
                     for file_path in remaining[: -self._max_files]:
-                        with suppress(Exception):
-                            file_path.unlink()
-                            removed.append(str(file_path))
+                        try:
+                            # Use file-specific lock for deletion
+                            delete_lock_file = self._lock_dir / f"{file_path.name}.delete.lock"
+                            delete_lock = ProcessSafeLock(delete_lock_file, timeout=1.0)
+
+                            if delete_lock.acquire():
+                                try:
+                                    if file_path.exists():  # Double-check
+                                        file_path.unlink()
+                                        removed.append(str(file_path))
+                                finally:
+                                    delete_lock.release()
+                        except Exception:
+                            continue
+
+                # Clean up old lock files
+                self._cleanup_old_locks()
 
                 return removed
 
-            except Exception:
-                return removed
+            finally:
+                # Always release lock
+                lock.release()
+
+        except Exception as e:
+            sys.stderr.write(f"Cleanup error: {e}\\n")
+            return removed
+
+    def _cleanup_old_locks(self) -> None:
+        """Clean up stale lock files."""
+        try:
+            current_time = time.time()
+            max_lock_age = 3600  # 1 hour - lock files older than this are stale
+
+            for lock_file in self._lock_dir.glob("*.lock"):
+                try:
+                    if current_time - lock_file.stat().st_mtime > max_lock_age:
+                        lock_file.unlink()
+                except Exception:
+                    pass  # Ignore errors for individual lock files
+        except Exception:
+            pass  # Non-critical operation
 
 
 def get_safe_session_logger(

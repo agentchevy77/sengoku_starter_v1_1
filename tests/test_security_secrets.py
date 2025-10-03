@@ -21,6 +21,9 @@ def test_secret_resolver_file_source(tmp_path, monkeypatch):
     secrets_path = tmp_path / "secrets.json"
     secrets_path.write_text(json.dumps(secrets))
 
+    # Set secure permissions on the secrets file (Bug #41 fix)
+    secrets_path.chmod(0o600)
+
     monkeypatch.setenv("SENGOKU_SECRETS_SOURCE", "file")
     monkeypatch.setenv("SENGOKU_SECRETS_FILE", str(secrets_path))
     monkeypatch.setenv("SENGOKU_TWS_HOST", "should_not_leak")

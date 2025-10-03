@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import time
 from collections.abc import Callable
@@ -64,6 +65,10 @@ class _TickCache:
         self._inflight: dict[tuple[Any, ...], Event] = {}
         self._last_prune = 0.0
         self._prune_interval = 60.0  # Prune at most once per minute
+        # Bug #7 fix: Track loader failures to prevent thundering herd
+        # Maps key -> timestamp when retry is allowed
+        self._failure_cooldowns: dict[tuple[Any, ...], float] = {}
+        self._failure_cooldown_sec = 5.0  # Wait 5 seconds before retry after failure
 
     def _prune_expired(self, now: float) -> None:
         """Prune expired entries efficiently and thread-safely.
@@ -74,6 +79,8 @@ class _TickCache:
         2. Delete expired entries
 
         This avoids the memory spike from copying all items when only a subset are expired.
+
+        Also prunes expired failure cooldown entries (Bug #7 fix).
         """
         # Two-pass approach for memory efficiency:
         # Pass 1: Collect only expired keys (typically much smaller than all items)
@@ -84,6 +91,11 @@ class _TickCache:
         # another thread somehow removed the key between passes
         for k in expired_keys:
             self._data.pop(k, None)
+
+        # Bug #7 fix: Also prune expired failure cooldowns to prevent memory leak
+        expired_cooldowns = [k for k, until in self._failure_cooldowns.items() if until <= now]
+        for k in expired_cooldowns:
+            self._failure_cooldowns.pop(k, None)
 
     def get_or_create(
         self,
@@ -110,6 +122,17 @@ class _TickCache:
 
                 waiter = self._inflight.get(key)
                 if waiter is None:
+                    # Bug #7 fix: Check if loader recently failed for this key
+                    # If in cooldown period, raise exception to prevent thundering herd
+                    cooldown_until = self._failure_cooldowns.get(key, 0.0)
+                    if now < cooldown_until:
+                        remaining = cooldown_until - now
+                        raise RuntimeError(
+                            f"Cache loader failed recently for key {key[:2] if key else 'unknown'}, "
+                            f"retry in {remaining:.1f}s (thundering herd prevention)"
+                        )
+                    # Cooldown expired or never existed, clear it and become the loader
+                    self._failure_cooldowns.pop(key, None)
                     waiter = Event()
                     self._inflight[key] = waiter
                     break
@@ -130,11 +153,18 @@ class _TickCache:
         try:
             payload = loader()
         except Exception:
+            # Bug #7 fix: Set failure cooldown to prevent thundering herd
+            # When loader fails, all waiting threads wake up. Without cooldown,
+            # they would all simultaneously retry the loader, multiplying load
+            # on the failing backend. By setting a cooldown, we force waiting
+            # threads to fail fast with clear "retry later" error.
             with self._lock:
+                now = time.time()
+                self._failure_cooldowns[key] = now + self._failure_cooldown_sec
                 self._data.pop(key, None)
                 event = self._inflight.pop(key, None)
                 if event is not None:
-                    event.set()
+                    event.set()  # Wake all waiters (they'll hit cooldown check)
             raise
 
         with self._lock:
@@ -156,6 +186,8 @@ class _TickCache:
             for event in self._inflight.values():
                 event.set()
             self._inflight.clear()
+            # Bug #7 fix: Also clear failure cooldowns on cache clear
+            self._failure_cooldowns.clear()
 
 
 _tick_cache = _TickCache()
@@ -163,6 +195,26 @@ _tick_cache = _TickCache()
 
 def get_app_config() -> AppConfig:
     return AppConfig()
+
+
+def safe_deep_copy_features(features: dict[str, Any]) -> dict[str, Any]:
+    """Create a deep copy of feature dictionary to prevent shared mutable state.
+
+    This fixes Bug #8: Shallow copy state corruption risk. When features contain
+    nested structures like 'bundles', a shallow copy with dict() shares references
+    to nested objects, causing modifications by one consumer to affect all others.
+
+    Args:
+        features: Feature dictionary potentially containing nested structures
+
+    Returns:
+        Deep copy of features with complete isolation
+
+    Note:
+        This is a critical fix for thread safety and data isolation. Without deep
+        copy, nested dictionaries like bundles['15m'] are shared between consumers.
+    """
+    return copy.deepcopy(features)
 
 
 def gather_panels(
@@ -219,7 +271,8 @@ def gather_panels(
                 if not (isinstance(feats, dict) and feats.get("last")):
                     continue
                 sym_upper = str(sym).upper()  # Compute once
-                features[sym_upper] = dict(feats)  # Copy only if needed
+                # FIX for Bug #8: Use deep copy to prevent shared mutable state
+                features[sym_upper] = safe_deep_copy_features(feats)
 
     targets = [sym.upper() for sym in symbols if sym] if symbols else watchlist
     missing = [sym for sym in targets if sym not in features]
@@ -230,7 +283,8 @@ def gather_panels(
             # Performance optimization: same pattern as above
             if not (isinstance(feats, dict) and feats.get("last")):
                 continue
-            features[str(sym).upper()] = dict(feats)
+            # FIX for Bug #8: Use deep copy to prevent shared mutable state
+            features[str(sym).upper()] = safe_deep_copy_features(feats)
 
     panels = [
         compute_panel(sym, feats, include_supply=include_supply, battlefield_width=profiles.ui_width)

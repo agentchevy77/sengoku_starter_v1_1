@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import stat
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
@@ -50,6 +51,67 @@ def _ensure_mapping(data: Any, origin: str) -> Mapping[str, Any]:
     raise ValueError(f"Secret payload from {origin} must be a mapping, got {type(data)!r}")
 
 
+def _check_file_permissions(path: Path, strict: bool = True) -> None:
+    """Check if file permissions are secure (not world/group readable).
+
+    Args:
+        path: Path to the secrets file
+        strict: If True, raise an exception for insecure permissions.
+                If False, only log a warning.
+
+    Raises:
+        PermissionError: If strict=True and file has insecure permissions
+    """
+    try:
+        file_stat = path.stat()
+        mode = file_stat.st_mode
+
+        # Check for world-readable permissions (o+r)
+        if mode & stat.S_IROTH:
+            msg = (
+                f"SECURITY WARNING: Secrets file '{path}' is world-readable "
+                f"(mode: {oct(stat.S_IMODE(mode))}). "
+                "This allows any user on the system to read your secrets! "
+                f"Fix with: chmod 600 {path}"
+            )
+            if strict:
+                raise PermissionError(msg)
+            logger.warning(msg)
+
+        # Check for group-readable permissions (g+r)
+        elif mode & stat.S_IRGRP:
+            msg = (
+                f"SECURITY WARNING: Secrets file '{path}' is group-readable "
+                f"(mode: {oct(stat.S_IMODE(mode))}). "
+                "This allows other users in your group to read your secrets. "
+                f"Fix with: chmod 600 {path}"
+            )
+            if strict:
+                raise PermissionError(msg)
+            logger.warning(msg)
+
+        # Check for recommended permissions (owner read-only or read-write)
+        elif not (
+            (mode & stat.S_IRUSR)
+            and not (mode & (stat.S_IWGRP | stat.S_IWOTH | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+        ):
+            # File should be readable by owner, not writable/executable by group/others
+            perms = stat.S_IMODE(mode)
+            if perms not in (0o600, 0o400):  # Accept both read-write and read-only for owner
+                logger.info(
+                    "Secrets file '%s' has permissions %s. " "Consider using more restrictive permissions (600 or 400)",
+                    path,
+                    oct(perms),
+                )
+    except PermissionError:
+        # Re-raise PermissionError for insecure file permissions
+        raise
+    except OSError as e:
+        # Log other OS errors (e.g., file not found during stat)
+        logger.warning("Could not check permissions for secrets file '%s': %s", path, e)
+        # Don't fail on permission check errors - let the file loading fail naturally
+
+
 @dataclass
 class SecretResolver:
     """Resolve secrets from environment, local files, or cloud providers."""
@@ -58,6 +120,7 @@ class SecretResolver:
     env: Mapping[str, str] | None = None
     file_path: str | os.PathLike[str] | None = None
     aws_secret_id: str | None = None
+    strict_permissions: bool = True  # Fail on insecure file permissions by default
     _loader: Callable[[str], Mapping[str, Any]] | None = None
 
     def __post_init__(self) -> None:
@@ -77,7 +140,12 @@ class SecretResolver:
         source = _coerce_source(os.getenv("SENGOKU_SECRETS_SOURCE"))
         file_path = os.getenv("SENGOKU_SECRETS_FILE")
         aws_secret_id = os.getenv("SENGOKU_AWS_SECRET_ID")
-        return cls(source=source, file_path=file_path, aws_secret_id=aws_secret_id)
+        # Allow overriding strict mode via environment variable
+        strict_env = os.getenv("SENGOKU_SECRETS_STRICT_PERMISSIONS", "true")
+        strict_permissions = strict_env.lower() not in ("false", "0", "no", "off")
+        return cls(
+            source=source, file_path=file_path, aws_secret_id=aws_secret_id, strict_permissions=strict_permissions
+        )
 
     # ----- public API -----
     def resolve(
@@ -141,6 +209,10 @@ class SecretResolver:
             raise ValueError("Secret source FILE requires 'file_path'")
         if not path.exists():
             raise FileNotFoundError(f"Secrets file not found: {path}")
+
+        # Check file permissions for security vulnerabilities
+        _check_file_permissions(path, strict=self.strict_permissions)
+
         text = path.read_text().strip()
         if not text:
             logger.warning("Secrets file '%s' is empty", path)

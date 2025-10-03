@@ -53,6 +53,7 @@ testing = [
     "pytest-xdist>=3.6.0",  # Parallel test execution
 ]
 profiling = [
+    "psutil>=7.0.0",  # System and process utilities (required by stress test scripts)
     "py-spy>=0.4.0",  # Sampling profiler
     "memray>=1.15.0",  # Memory profiler
     "scalene>=1.5.0",  # CPU/GPU/memory profiler

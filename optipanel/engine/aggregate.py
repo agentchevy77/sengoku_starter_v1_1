@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from optipanel.battlefield.engine import compute_units
-from optipanel.chips.aggregate import summarize_chips
+from optipanel.chips.aggregate import compute_sustainment, summarize_chips
 from optipanel.prob.chips import compute_prob_chips
 from optipanel.setups.engine import compute_setups
 
@@ -72,13 +72,25 @@ def build_symbol_snapshot(symbol: str, features: dict[str, Any]) -> dict[str, An
     """
     Pure aggregator that combines battlefield 'units' and setup scores into a single view.
 
+    Bug #32 FIX: Updated advice logic to consult exhaustion and sustainability metrics
+    before recommending aggressive positions, preventing dangerous trades on overextended
+    or unreliable signals.
+
+    Bug #34 FIX: All score-related fields now use consistent int type (0-100 range).
+    Removed float values from sustainment to eliminate type ambiguity for API consumers.
+
     Returns:
       {
         "symbol": str,
-        "units": dict,   # from compute_units(features)
-        "setups": dict,  # from compute_setups(features)
-        "score": int,    # 0..100 composite
+        "units": dict[str, dict[str, int]],        # from compute_units(features)
+        "setups": dict[str, int],                  # from compute_setups(features)
+        "score": int,                              # 0..100 composite
         "advice": "attack" | "defend" | "standby",
+        "sustainment": dict[str, int],             # sustainability and fakeout_risk scores (both int)
+        "prob_chips": dict[str, dict[str, int]],   # probability chips by timeframe
+        "prob_summary": dict[str, dict[str, int]], # summarized chip scores
+        "battlefield_bundle": dict[str, float],    # raw market features (not scores)
+        "features": dict[str, Any],                # original input features
       }
     """
     tf_bundles = _extract_timeframe_bundles(features)
@@ -98,15 +110,40 @@ def build_symbol_snapshot(symbol: str, features: dict[str, Any]) -> dict[str, An
 
     score = _clamp_int(50 + 0.5 * bias)
 
-    if score >= 65:
-        advice = "attack"
-    elif score <= 35:
-        advice = "defend"
-    else:
-        advice = "standby"
-
     prob_chips_input = tf_bundles or {"1d": primary_bundle or fallback_bundle}
     prob_chips = compute_prob_chips(prob_chips_input)
+
+    # Bug #32 FIX: Calculate sustainability to assess move reliability
+    sustainment = compute_sustainment(prob_chips)
+
+    # Bug #32 FIX: Multi-factor advice logic with safety checks
+    # Extract risk metrics
+    exhaustion = setups.get("exhaustion", 50)
+    sustainability = sustainment.get("sustainability", 50)
+    fakeout_risk = sustainment.get("fakeout_risk", 50)
+
+    # Configurable thresholds for risk assessment
+    EXHAUSTION_VETO = 70  # Too overextended/climactic
+    SUSTAINABILITY_MIN = 40  # Move must be reliable
+    FAKEOUT_RISK_MAX = 70  # Likely false signal
+
+    # Multi-factor decision logic
+    if score >= 65:
+        # Strong bullish signal - apply safety checks
+        if exhaustion < EXHAUSTION_VETO and sustainability >= SUSTAINABILITY_MIN and fakeout_risk < FAKEOUT_RISK_MAX:
+            advice = "attack"
+        else:
+            # Signal strong but risk too high - wait
+            advice = "standby"
+    elif score <= 35:
+        # Strong bearish signal - apply safety checks
+        if exhaustion < EXHAUSTION_VETO and sustainability >= SUSTAINABILITY_MIN and fakeout_risk < FAKEOUT_RISK_MAX:
+            advice = "defend"
+        else:
+            # Signal strong but risk too high - wait
+            advice = "standby"
+    else:
+        advice = "standby"
 
     snapshot = {
         "symbol": symbol,
@@ -114,6 +151,7 @@ def build_symbol_snapshot(symbol: str, features: dict[str, Any]) -> dict[str, An
         "setups": setups,
         "score": score,
         "advice": advice,
+        "sustainment": sustainment,
         "battlefield_bundle": dict(primary_bundle) if primary_bundle else dict(fallback_bundle),
         "prob_chips": prob_chips,
     }

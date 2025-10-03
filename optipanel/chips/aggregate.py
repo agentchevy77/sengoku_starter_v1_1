@@ -134,17 +134,26 @@ def summarize_chips(chips_by_tf: dict[str, dict[str, int]] | None) -> dict[str, 
     return summary
 
 
-def compute_sustainment(chips_by_tf: dict[str, dict[str, int]] | None) -> dict[str, Any]:
-    """Derive sustainability vs fakeout risk from probability chips."""
+def compute_sustainment(chips_by_tf: dict[str, dict[str, int]] | None) -> dict[str, int]:
+    """Derive sustainability vs fakeout risk from probability chips.
+
+    Bug #34 Fix: Returns only score fields (int) for type consistency.
+    All score-related fields in the snapshot now use int (0-100) uniformly.
+    Debug/diagnostic data has been removed to eliminate float/int mixing.
+
+    Returns:
+        Dictionary with two int scores (0-100):
+        - sustainability: Reliability of the current move/signal
+        - fakeout_risk: Probability signal is false/will reverse
+    """
 
     if not chips_by_tf:
-        return {"sustainability": 50, "fakeout_risk": 50, "debug": {}}
+        return {"sustainability": 50, "fakeout_risk": 50}
 
     weights = {"D": 0.5, "H1": 0.3, "M15": 0.2}
     sustain_sum = 0.0
     risk_sum = 0.0
     w_sum = 0.0
-    debug: dict[str, Any] = {}
 
     for tf, chips in chips_by_tf.items():
         if not isinstance(chips, dict):
@@ -168,23 +177,10 @@ def compute_sustainment(chips_by_tf: dict[str, dict[str, int]] | None) -> dict[s
         risk_sum += risk_component * w
         w_sum += w
 
-        debug[canon] = {
-            "trend": trend,
-            "counter": counter,
-            "breakout": breakout,
-            "fake_break": fake_break,
-            "support": support,
-            "breakdown": breakdown,
-            "sustain_component": sustain_component,
-            "risk_component": risk_component,
-            "weight": w,
-        }
-
     sustainability = _clamp(sustain_sum / w_sum if w_sum else 50.0)
     fakeout_risk = _clamp(risk_sum / w_sum if w_sum else 50.0)
 
     return {
         "sustainability": sustainability,
         "fakeout_risk": fakeout_risk,
-        "debug": debug,
     }

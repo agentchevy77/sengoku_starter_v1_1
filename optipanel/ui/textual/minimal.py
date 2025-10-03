@@ -66,6 +66,11 @@ class SengokuMinimalTui(App):
         self._timer: Timer | None = None
         self._inflight: asyncio.Task[str] | None = None
 
+        # Fix for Issue #14: Add lock to make refresh scheduling atomic
+        self._refresh_lock: asyncio.Lock = asyncio.Lock()
+        # Fix for Issue #15: Track task generation to prevent stale updates
+        self._refresh_generation: int = 0
+
     def compose(self) -> ComposeResult:  # pragma: no cover - UI composition
         yield Header(show_clock=True)
         with Vertical(id="body"), Horizontal():
@@ -77,36 +82,112 @@ class SengokuMinimalTui(App):
         self._timer = self.set_interval(self.refresh_interval, self._schedule_refresh)
 
     async def on_unmount(self) -> None:  # pragma: no cover
+        """Clean shutdown handler with improved error handling.
+
+        This fixes Issue #17 by suppressing all exceptions during shutdown,
+        not just CancelledError, ensuring clean application termination.
+        """
         if self._timer is not None:
             self._timer.stop()
         if self._inflight is not None:
             self._inflight.cancel()
-            with suppress(asyncio.CancelledError):
+            # Fix for Issue #17: Suppress all exceptions during shutdown
+            with suppress(Exception):
                 await self._inflight
 
     def _schedule_refresh(self, force: bool = False) -> None:
+        """Schedule a refresh operation with atomic task management.
+
+        This method fixes Issue #14 (race condition) and Issue #15 (orphaned tasks)
+        by using an asyncio.Lock to ensure atomic check-then-act operations.
+
+        Args:
+            force: If True, cancels any in-flight refresh and starts a new one
+        """
         if self._paused and not force:
             return
-        if self._inflight is not None and not self._inflight.done():
-            return
-        self._inflight = asyncio.create_task(self._refresh_once())
 
-    async def _refresh_once(self) -> str:
+        # Use asyncio.create_task to schedule the async operation
+        asyncio.create_task(self._schedule_refresh_async(force))
+
+    async def _schedule_refresh_async(self, force: bool = False) -> None:
+        """Async helper that implements atomic refresh scheduling.
+
+        This method uses a lock to ensure that check-then-act operations
+        are atomic, preventing race conditions.
+        """
+        async with self._refresh_lock:
+            # ATOMIC SECTION START - Protected by lock
+            if self._inflight is not None and not self._inflight.done():
+                if force:
+                    # Cancel the existing task when forcing a refresh
+                    self._inflight.cancel()
+                    # Wait for cancellation to complete
+                    with suppress(asyncio.CancelledError):
+                        await self._inflight
+                else:
+                    # Regular refresh blocked by in-flight task
+                    return
+
+            # Increment generation counter for this new refresh
+            self._refresh_generation += 1
+            current_generation = self._refresh_generation
+
+            # Create new task (atomically, within the lock)
+            self._inflight = asyncio.create_task(self._refresh_once_with_generation(current_generation))
+            # ATOMIC SECTION END
+
+    async def _refresh_once_with_generation(self, generation: int) -> str:
+        """Perform a refresh operation with generation checking.
+
+        This method fixes Issue #15 (stale updates) by checking the generation
+        before updating the UI. If this task's generation is stale (because a
+        newer refresh was started), it will skip the UI update.
+
+        Args:
+            generation: The generation number when this refresh was scheduled
+
+        Returns:
+            The panel text, or empty string if generation is stale
+        """
         pane = self.query_one(CommandRoomPane)
         try:
-            result = await asyncio.to_thread(
-                run_tick,
-                self._profiles_yaml,
-                self._provider,
-                features_yaml_path=self._features_yaml,
-                width=self._width,
-                top_n=self._top_n,
+            # Fix for Issue #16: Add timeout to prevent permanent freeze
+            # Wrap the blocking call in asyncio.wait_for with 30 second timeout
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    run_tick,
+                    self._profiles_yaml,
+                    self._provider,
+                    features_yaml_path=self._features_yaml,
+                    width=self._width,
+                    top_n=self._top_n,
+                ),
+                timeout=30.0,  # 30 second timeout prevents permanent freeze
             )
             panel_text = str(result.get("panel", ""))
+        except TimeoutError:
+            # Backend operation timed out
+            panel_text = "[ERROR] Refresh timed out after 30 seconds"
         except Exception as exc:  # pragma: no cover - defensive
             panel_text = f"[ERROR] {exc!r}"
-        pane.display(panel_text)
-        return panel_text
+
+        # Only update display if we're still the current generation
+        # This prevents stale updates from orphaned tasks
+        if generation == self._refresh_generation:
+            pane.display(panel_text)
+            return panel_text
+        else:
+            # We're a stale generation, don't update UI
+            return ""
+
+    async def _refresh_once(self) -> str:
+        """Legacy refresh method for backward compatibility.
+
+        This method is kept for compatibility but now delegates to
+        the generation-aware version.
+        """
+        return await self._refresh_once_with_generation(self._refresh_generation)
 
     def action_toggle_pause(self) -> None:  # pragma: no cover - bound action
         self._paused = not self._paused

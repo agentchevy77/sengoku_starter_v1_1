@@ -1,5 +1,13 @@
 # Sengoku Project - Complete Documentation Index
 
+## AI Assistant Instructions
+
+### 1. **ClaudeCloud.md**
+- A backup copy of the `Claude.md` file.
+- Contains instructions, project status, and known issues for AI assistants.
+
+---
+
 ## Bug Reports and Analysis
 
 ### 1. **BUG_REPORT.md**
