@@ -71,9 +71,11 @@ class TestTWSErrorClassification:
             reqId=-1, errorTime=0, errorCode=1102, errorString="Connectivity restored", advancedOrderRejectJson=""
         )
 
-        # Should log as info
+        # Should log as info (using %-formatting for lazy evaluation)
         logger.info.assert_called_once()
-        assert "TWS Error [INFO]" in logger.info.call_args[0][0]
+        # Check the format string (first arg) and verify error level is in the parameters
+        assert logger.info.call_args[0][0] == "TWS Error [%s] Code=%d, ReqId=%d: %s"
+        assert logger.info.call_args[0][1] == "INFO"  # error_level.upper()
 
         # Should not be added to errors list
         assert len(app.errors) == 0
@@ -96,9 +98,10 @@ class TestTWSErrorClassification:
             advancedOrderRejectJson="",
         )
 
-        # Should log as warning
+        # Should log as warning (using %-formatting for lazy evaluation)
         logger.warning.assert_called_once()
-        assert "TWS Error [WARNING]" in logger.warning.call_args[0][0]
+        assert logger.warning.call_args[0][0] == "TWS Error [%s] Code=%d, ReqId=%d: %s"
+        assert logger.warning.call_args[0][1] == "WARNING"
 
         # Should not be added to errors list
         assert len(app.errors) == 0
@@ -117,9 +120,10 @@ class TestTWSErrorClassification:
             reqId=1, errorTime=0, errorCode=200, errorString="No security definition found", advancedOrderRejectJson=""
         )
 
-        # Should log as error
+        # Should log as error (using %-formatting for lazy evaluation)
         logger.error.assert_called_once()
-        assert "TWS Error [ERROR]" in logger.error.call_args[0][0]
+        assert logger.error.call_args[0][0] == "TWS Error [%s] Code=%d, ReqId=%d: %s"
+        assert logger.error.call_args[0][1] == "ERROR"
 
         # Should be added to errors list
         assert len(app.errors) == 1
@@ -137,9 +141,10 @@ class TestTWSErrorClassification:
         # Test critical-level error
         app.error(reqId=-1, errorTime=0, errorCode=504, errorString="Not connected to TWS", advancedOrderRejectJson="")
 
-        # Should log as critical
+        # Should log as critical (using %-formatting for lazy evaluation)
         logger.critical.assert_called_once()
-        assert "TWS Error [CRITICAL]" in logger.critical.call_args[0][0]
+        assert logger.critical.call_args[0][0] == "TWS Error [%s] Code=%d, ReqId=%d: %s"
+        assert logger.critical.call_args[0][1] == "CRITICAL"
 
         # Should be added to errors list
         assert len(app.errors) == 1
@@ -157,9 +162,10 @@ class TestTWSErrorClassification:
         # Test unknown error code
         app.error(reqId=-1, errorTime=0, errorCode=99999, errorString="Unknown error", advancedOrderRejectJson="")
 
-        # Should log as error (default)
+        # Should log as error (default, using %-formatting for lazy evaluation)
         logger.error.assert_called_once()
-        assert "TWS Error [ERROR]" in logger.error.call_args[0][0]
+        assert logger.error.call_args[0][0] == "TWS Error [%s] Code=%d, ReqId=%d: %s"
+        assert logger.error.call_args[0][1] == "ERROR"
 
         # Should be added to errors list
         assert len(app.errors) == 1
@@ -174,22 +180,28 @@ class TestTWSErrorClassification:
 
         app = _BaseApp()
 
-        rejection_json = '{"reason": "insufficient margin", "details": {...}}'
+        # Valid JSON for testing
+        rejection_json = (
+            '{"reason": "insufficient margin", "orderId": "12345", "details": {"required": 10000, "available": 5000}}'
+        )
 
         # Test error with advanced rejection JSON
         app.error(
             reqId=1, errorTime=0, errorCode=201, errorString="Order rejected", advancedOrderRejectJson=rejection_json
         )
 
-        # Should log the main error
+        # Should log the main error (using %-formatting)
         assert logger.error.call_count == 2
-        first_call = logger.error.call_args_list[0][0][0]
-        assert "TWS Error [ERROR]" in first_call
+        # First call is the main error
+        assert logger.error.call_args_list[0][0][0] == "TWS Error [%s] Code=%d, ReqId=%d: %s"
+        assert logger.error.call_args_list[0][0][1] == "ERROR"
 
-        # Should also log the rejection details
-        second_call = logger.error.call_args_list[1][0][0]
-        assert "Order rejection details:" in second_call
-        assert rejection_json in second_call
+        # Second call is the rejection details
+        assert "Order rejection:" in logger.error.call_args_list[1][0][0]
+        # Verify structured data was logged
+        assert logger.error.call_args_list[1][0][1] == 1  # reqId
+        assert logger.error.call_args_list[1][0][2] == "12345"  # orderId
+        assert logger.error.call_args_list[1][0][3] == "insufficient margin"  # reason
 
     @patch("optipanel.adapters.ibkr.tws_fetcher.record")
     def test_metrics_recording(self, mock_record):
