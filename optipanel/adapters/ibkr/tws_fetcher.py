@@ -89,7 +89,75 @@ def cfg_from_env(resolver: SecretResolver | None = None) -> TwsConfig:
 
 
 class _BaseApp(EWrapper, EClient):
-    _NON_FATAL = {2104, 2106, 2158}
+    # Bug #43 FIX: Comprehensive IB API error code classification
+    # Based on official IB API documentation and empirical testing
+    _ERROR_CLASSIFICATIONS = {
+        # Informational messages (1000-1999) - System status, not errors
+        1100: "info",  # Connectivity between IB and TWS has been lost
+        1101: "info",  # Connectivity between IB and TWS has been restored - data lost
+        1102: "info",  # Connectivity between IB and TWS has been restored - data maintained
+        1300: "info",  # TWS socket port has been reset
+        # Market data farm connection messages (2100-2199) - Non-fatal warnings
+        2100: "warning",  # API client has been unsubscribed from account data
+        2101: "warning",  # API client has been subscribed to account data
+        2102: "warning",  # ActiveX API client has been unsubscribed from account data
+        2103: "warning",  # Market data farm connection is OK
+        2104: "warning",  # Market data farm connection is OK (alternate farm)
+        2105: "warning",  # HMDS data farm connection is OK
+        2106: "warning",  # HMDS data farm connection is OK (alternate farm)
+        2107: "warning",  # HMDS data farm connection is inactive but should be available
+        2108: "warning",  # Market data farm connection is inactive but should be available
+        2109: "warning",  # HMDS data farm connection is inactive but should be available
+        2110: "warning",  # Connectivity between TWS and server is broken
+        2119: "warning",  # Market data farm is connecting
+        2137: "warning",  # Cross connect feature is enabled
+        2158: "warning",  # Sec-def data farm connection is OK
+        # Request-specific errors (200-599) - Generally fatal
+        200: "error",  # No security definition found
+        201: "error",  # Order rejected - Reason provided
+        202: "error",  # Order cancelled
+        203: "error",  # Security not available for short sale
+        320: "error",  # Invalid ticker action
+        321: "error",  # Invalid action
+        322: "error",  # Invalid quantity
+        323: "error",  # Invalid order
+        324: "error",  # Invalid account
+        325: "error",  # Invalid operation
+        326: "error",  # Request not supported
+        354: "error",  # Requested market data is not subscribed
+        357: "error",  # Requested market data is not available
+        365: "error",  # No historical data query found
+        366: "error",  # No historical data available
+        383: "error",  # Invalid contract
+        384: "error",  # Contract not visible
+        399: "error",  # Order message error
+        # System/Connection errors (500-599) - Fatal
+        501: "critical",  # Already connected
+        502: "critical",  # Couldn't connect to TWS
+        503: "critical",  # The TWS is out of date
+        504: "critical",  # Not connected to TWS
+        505: "critical",  # Fatal error
+        506: "critical",  # Unsupported version
+        507: "critical",  # Bad message length
+        508: "critical",  # Bad message
+        509: "critical",  # Exception caught
+        510: "critical",  # Unexpected error
+        511: "critical",  # Request parsing error
+        512: "critical",  # Response parsing error
+        513: "critical",  # Socket exception
+        514: "critical",  # Failure creating socket
+        515: "critical",  # Verification failed
+        516: "critical",  # Hash doesn't match
+        517: "critical",  # Unexpected incoming message
+        # Misc warnings (10000+) - Non-fatal
+        10167: "warning",  # Requested market data is delayed
+        10168: "warning",  # Requested delayed market data is not available
+        10197: "warning",  # No market data permissions
+    }
+
+    # Backward compatibility: Keep NON_FATAL for existing code
+    _NON_FATAL = {code for code, level in _ERROR_CLASSIFICATIONS.items() if level in ("info", "warning")}
+
     # Bug #1 FIX: Bounded error accumulation to prevent memory leak
     _MAX_ERRORS = int(os.getenv("SENGOKU_TWS_MAX_ERRORS", "100"))
 
@@ -104,6 +172,7 @@ class _BaseApp(EWrapper, EClient):
         """Handle errors from TWS API.
 
         Updated for ibapi 10.37.2+ which added errorTime parameter.
+        Bug #43 FIX: Enhanced error classification and handling.
 
         Args:
             reqId: Request ID that caused the error
@@ -112,11 +181,37 @@ class _BaseApp(EWrapper, EClient):
             errorString: Human-readable error message
             advancedOrderRejectJson: Optional JSON with advanced order rejection details
         """
+        import logging
         from contextlib import suppress
 
+        logger = logging.getLogger(__name__)
+
+        # Determine error classification
+        error_level = self._ERROR_CLASSIFICATIONS.get(errorCode, "error")
+
+        # Record metric
         with suppress(Exception):
             record(f"ibkr.error.{errorCode}")
-        if errorCode not in self._NON_FATAL:
+            record(f"ibkr.error_level.{error_level}")
+
+        # Enhanced logging with classification
+        log_msg = f"TWS Error [{error_level.upper()}] Code={errorCode}, ReqId={reqId}: {errorString}"
+
+        if error_level == "info":
+            logger.info(log_msg)
+        elif error_level == "warning":
+            logger.warning(log_msg)
+        elif error_level == "critical":
+            logger.critical(log_msg)
+        else:  # error
+            logger.error(log_msg)
+
+        # Handle advanced order rejection JSON if present
+        if advancedOrderRejectJson and advancedOrderRejectJson.strip():
+            logger.error(f"Order rejection details: {advancedOrderRejectJson}")
+
+        # Only append fatal errors to the errors list
+        if error_level in ("error", "critical"):
             self.errors.append((errorCode, str(errorString)))
 
     def nextValidId(self, orderId):
