@@ -2,6 +2,41 @@
 
 ## Recent Changes
 
+### 2025-10-02: Textual UI Bug Analysis (Bugs #14-#17)
+**Status**: ✅ **ANALYSIS COMPLETE** - Bugs confirmed and documented
+
+Performed comprehensive analysis of Textual UI module and confirmed **4 real bugs** in refresh and task management:
+
+**Critical Priority**:
+- **Bug #16**: Permanent UI freeze on backend deadlock (CRITICAL)
+  - No timeout on `await asyncio.to_thread(run_tick, ...)`
+  - If backend hangs, UI freezes forever with no recovery
+
+**High Priority**:
+- **Bug #14**: Race condition in refresh scheduling (HIGH)
+  - Non-atomic check-then-act pattern allows concurrent refresh tasks
+- **Bug #15**: Stale UI updates from orphaned tasks (HIGH)
+  - Direct consequence of #14 - old task overwrites fresh data
+- **Bug #8**: Elevated from MEDIUM to HIGH priority due to UI impact
+
+**Low Priority**:
+- **Bug #17**: Unhandled exceptions on shutdown (LOW)
+  - Only suppresses `CancelledError`, not all exceptions
+
+**Analysis Results**:
+- 3 out of 4 reported bugs are **REAL and significant**
+- 1 bug (#17) is real but minor severity
+- All bugs have precise locations, impact analysis, and proposed fixes
+- Recommended fix order updated with UI bugs taking top priority
+
+**Files Analyzed**:
+- `optipanel/ui/textual/minimal.py` - All bugs in this file
+- No test coverage exists for this module
+
+**Next Steps**: UI bugs should be prioritized before backend optimizations due to critical freeze risk.
+
+---
+
 ### 2025-10-02: Argparse Boolean Flag Environment Variable Precedence Fix (Bug #13)
 **Status**: ✅ **COMPLETE**
 
@@ -311,13 +346,20 @@ The following bugs have been identified and verified through code analysis. They
 - **Files**: `optipanel/adapters/ibkr/tws_fetcher.py:333-340`, `tests/test_tws_stale_error_fix.py`
 
 ### Issue #3: Race Condition in Pacing Metrics (Medium Priority)
-**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+**Status**: ✅ **FIXED** (2025-10-02)
 
 - **Location**: `optipanel/adapters/ibkr/tws_fetcher.py:277-282,525` (pacing metrics variables)
 - **Problem**: `_rate_wait_total` and `_rate_wait_events` modified/read without locks
 - **Severity**: Medium - Latent race condition
 - **Impact**: If `pacing_metrics()` called concurrently with `_pace_request()`, could return corrupted data
-- **Proposed Fix**: Add a threading.Lock to protect pacing metric variables, or make them atomic
+- **Fix Applied**: Added `threading.Lock` (`_rate_metrics_lock`) to protect all pacing metric read/write operations
+- **Implementation**:
+  - Added lock in `__init__()` at line 227
+  - Protected writes in `_pace_request()` with lock (lines 277-307)
+  - Protected reads in `pacing_metrics()` with lock (lines 540-543)
+  - Minimized lock hold time by caching values for logging
+- **Testing**: 4 comprehensive tests added in `tests/test_tws_pacing_race_fix.py` including concurrent stress testing
+- **Files**: `optipanel/adapters/ibkr/tws_fetcher.py:227,277-307,540-543`, `tests/test_tws_pacing_race_fix.py`
 
 ### Issue #4: Inefficient Symbol Fetching (Low Priority)
 **Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
@@ -410,6 +452,69 @@ The following bugs have been identified and verified through code analysis. They
 - **Action Taken**: Added explicit `safe_copy_alerts()` utility to formalize defensive pattern and make intent clear for future maintainers
 - **Files**: `optipanel/cli/config.py:292-310`
 
+### Issue #13: Argparse Boolean Flag Environment Variable Precedence (Medium Priority)
+**Status**: ✅ **FIXED** (2025-10-02)
+
+- **Location**: `optipanel/cli/main.py` (multiple boolean flags)
+- **Problem**: Boolean flags using `action="store_true"` always returned `False` when omitted, preventing environment variable fallback
+- **Severity**: Medium - Broke config precedence guarantees
+- **Impact**: Environment variables like `SENGOKU_NOTIFY_INCLUDE_SUPPLY` were completely ignored when CLI flag was omitted
+- **Fix Applied**: Changed from `action="store_true"` to `action="store_const"` with `const=True, default=None`
+- **Testing**: 365 tests pass, environment variable precedence now works correctly
+- **Files**: `optipanel/cli/main.py`, `tests/test_cli_json_errors.py`, `tests/test_tws_fetcher_unit.py`
+
+### Issue #14: Critical Race Condition in UI Refresh Logic (High Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/ui/textual/minimal.py:87-92` (`_schedule_refresh`)
+- **Problem**: The check-then-act pattern for preventing concurrent refreshes is not atomic
+- **Severity**: HIGH - Race condition allows multiple concurrent refresh tasks
+- **Impact**: If two refresh triggers (timer + manual refresh) arrive in quick succession, both can pass the check before either creates the task, resulting in two `_refresh_once` tasks running concurrently
+- **Code Pattern**:
+  ```python
+  if self._inflight is not None and not self._inflight.done():  # CHECK
+      return
+  self._inflight = asyncio.create_task(self._refresh_once())    # ACT
+  ```
+- **Proposed Fix**: Use asyncio.Lock to make the check-then-act sequence atomic
+
+### Issue #15: Stale UI Updates from Orphaned Tasks (High Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/ui/textual/minimal.py:94-109` (`_refresh_once`)
+- **Problem**: Direct consequence of Issue #14 - when second task overwrites `self._inflight`, first task becomes orphaned but continues running
+- **Severity**: HIGH - Causes confusing UI behavior
+- **Impact**: Orphaned task completes after newer task, calling `pane.display(panel_text)` with stale data that overwrites fresh UI. User sees screen update with fresh data, then "snap back" to stale data moments later.
+- **Example Flow**: Task1 starts (slow) → Task2 starts (fast) → Task2 completes, updates UI → Task1 completes, overwrites with stale data
+- **Proposed Fix**: Fixed automatically by resolving Issue #14 with atomic task management
+
+### Issue #16: Permanent UI Freeze on Backend Deadlock (Critical Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/ui/textual/minimal.py:97-104` (`_refresh_once`)
+- **Problem**: The `await asyncio.to_thread(run_tick, ...)` has no timeout
+- **Severity**: **CRITICAL** - Can cause permanent application freeze
+- **Impact**: If `run_tick` deadlocks or hangs, the await hangs forever. Since `self._inflight.done()` remains `False`, all future refreshes are blocked by the check in `_schedule_refresh`. UI permanently freezes displaying stale data with no error message. Application must be killed.
+- **Code Pattern**:
+  ```python
+  result = await asyncio.to_thread(run_tick, ...)  # No timeout!
+  ```
+- **Proposed Fix**: Add timeout wrapper: `await asyncio.wait_for(asyncio.to_thread(run_tick, ...), timeout=30.0)`
+
+### Issue #17: Unhandled Exception on Shutdown (Low Priority)
+**Status**: ⏳ **IDENTIFIED - NOT YET FIXED**
+
+- **Location**: `optipanel/ui/textual/minimal.py:79-85` (`on_unmount`)
+- **Problem**: Shutdown logic only suppresses `asyncio.CancelledError`, not all exceptions
+- **Severity**: Low - Rare edge case during shutdown
+- **Impact**: If awaiting cancelled task produces different exception (e.g., cleanup code fails), it propagates out of `on_unmount`, causing unhandled exception during shutdown sequence
+- **Code Pattern**:
+  ```python
+  with suppress(asyncio.CancelledError):  # Only suppresses CancelledError
+      await self._inflight
+  ```
+- **Proposed Fix**: Use `suppress(Exception)` for defensive robustness, or add comprehensive error handling
+
 ### Verified False Positive
 **Bug Report #4 (Stale Cache Fallback)**: Reported as logic flaw, but analysis confirms the `finally` block correctly executes `app.release(req_id)` even when TimeoutError is raised. Code is correct as-is.
 
@@ -474,18 +579,30 @@ Nine critical fixes successfully implemented:
    - Environment variables now properly respected: CLI > ENV > default
    - Files: `optipanel/cli/main.py`, `tests/test_cli_json_errors.py`, `tests/test_tws_fetcher_unit.py`
 
+11. ✅ **Race Condition in Pacing Metrics** (Issue #3 - 2025-10-02)
+   - Fixed thread-safety issue in TWS fetcher pacing metrics
+   - Added `threading.Lock` to protect concurrent access to `_rate_wait_total` and `_rate_wait_events`
+   - Prevents data corruption when `pacing_metrics()` called during `_pace_request()`
+   - Added 4 comprehensive concurrency tests
+   - Files: `optipanel/adapters/ibkr/tws_fetcher.py`, `tests/test_tws_pacing_race_fix.py`
+
 ### Pending Issues (Documented for Future Work)
 **Priority Breakdown**:
-- 🟡 **4 MEDIUM**: Race conditions, performance (Issues #3, #6, #7, #8)
-- 🟢 **2 LOW**: Minor inefficiencies (Issues #1, #4)
+- 🔴 **1 CRITICAL**: UI deadlock (Issue #16)
+- 🟠 **3 HIGH**: UI race conditions and state corruption (Issues #14, #15, #8)
+- 🟡 **2 MEDIUM**: Backend performance issues (Issues #6, #7)
+- 🟢 **3 LOW**: Minor inefficiencies and edge cases (Issues #1, #4, #17)
 
 **Recommended Fix Order**:
-1. Issue #3 (MEDIUM) - Pacing metrics race condition
-2. Issue #7 (MEDIUM) - Thundering herd on cache loader failure
-3. Issue #8 (MEDIUM) - Shallow copy state corruption risk
-4. Issue #6 (MEDIUM) - Memory spike in cache pruning
-5. Issue #4 (LOW) - Inefficient reference symbol fetching
-6. Issue #1 (LOW) - Unbounded error accumulation
+1. Issue #16 (CRITICAL) - UI permanent freeze on backend deadlock - add timeout to `run_tick`
+2. Issue #14 (HIGH) - UI refresh race condition - use asyncio.Lock for atomic task management
+3. Issue #15 (HIGH) - Stale UI updates from orphaned tasks - fixed automatically by #14
+4. Issue #8 (HIGH) - Shallow copy state corruption risk in API
+5. Issue #7 (MEDIUM) - Thundering herd on cache loader failure
+6. Issue #6 (MEDIUM) - Memory spike in cache pruning
+7. Issue #17 (LOW) - Unhandled exception on UI shutdown
+8. Issue #4 (LOW) - Inefficient reference symbol fetching
+9. Issue #1 (LOW) - Unbounded error accumulation
 
 **Analysis Methodology**: All bugs were verified through systematic code review, tracing execution paths, examining thread safety, and validating against actual code behavior. Each issue includes precise locations, severity rationale, impact analysis, and concrete fix proposals.
 

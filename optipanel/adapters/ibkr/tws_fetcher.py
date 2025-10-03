@@ -223,6 +223,8 @@ class RealTwsFetcher:
             interval_sec=float(self.cfg.global_rate_interval_sec),
             name="tws-global",
         )
+        # Thread-safe pacing metrics (Issue #3 fix: race condition)
+        self._rate_metrics_lock = threading.Lock()
         self._rate_wait_total: float = 0.0
         self._rate_wait_events: deque[tuple[float, float]] = deque()
         self._rate_wait_last: float = 0.0
@@ -271,26 +273,40 @@ class RealTwsFetcher:
 
         if self._global_rate_limiter.enabled:
             waited = self._global_rate_limiter.acquire()
-            self._rate_wait_last = waited
-            if waited:
-                now = time.time()
-                self._rate_wait_events.append((now, waited))
-                self._rate_wait_total += waited
-                cutoff = now - float(self.cfg.global_rate_interval_sec)
-                while self._rate_wait_events and self._rate_wait_events[0][0] < cutoff:
-                    _, duration = self._rate_wait_events.popleft()
-                    self._rate_wait_total = max(0.0, self._rate_wait_total - duration)
-                if waited >= self._rate_warn_threshold and now - self._rate_warn_last_ts >= self._rate_warn_interval:
-                    logger.warning(
-                        "TWS pacing: global limiter slept %.3fs (total %.3fs / %.1fs, limit=%d)",
-                        waited,
-                        self._rate_wait_total,
-                        self.cfg.global_rate_interval_sec,
-                        self.cfg.global_rate_max_requests,
+            # Thread-safe metric updates (Issue #3 fix)
+            with self._rate_metrics_lock:
+                self._rate_wait_last = waited
+                if waited:
+                    now = time.time()
+                    self._rate_wait_events.append((now, waited))
+                    self._rate_wait_total += waited
+                    cutoff = now - float(self.cfg.global_rate_interval_sec)
+                    while self._rate_wait_events and self._rate_wait_events[0][0] < cutoff:
+                        _, duration = self._rate_wait_events.popleft()
+                        self._rate_wait_total = max(0.0, self._rate_wait_total - duration)
+                    # Check warning threshold inside lock to ensure consistent metrics
+                    should_warn = (
+                        waited >= self._rate_warn_threshold
+                        and now - self._rate_warn_last_ts >= self._rate_warn_interval
                     )
-                    self._rate_warn_last_ts = now
+                    if should_warn:
+                        # Cache values for logging outside lock
+                        total_wait = self._rate_wait_total
+                        interval = self.cfg.global_rate_interval_sec
+                        max_requests = self.cfg.global_rate_max_requests
+                        self._rate_warn_last_ts = now
+            # Log warning outside lock to avoid holding it during I/O
+            if waited and should_warn:
+                logger.warning(
+                    "TWS pacing: global limiter slept %.3fs (total %.3fs / %.1fs, limit=%d)",
+                    waited,
+                    total_wait,
+                    interval,
+                    max_requests,
+                )
         else:
-            self._rate_wait_last = 0.0
+            with self._rate_metrics_lock:
+                self._rate_wait_last = 0.0
 
         self._last_request_ts = time.time()
         self._request_window.append(self._last_request_ts)
@@ -522,6 +538,12 @@ class RealTwsFetcher:
         return self.features_for_symbols(symbols)
 
     def pacing_metrics(self) -> dict[str, Any]:
+        # Thread-safe metric reads (Issue #3 fix)
+        with self._rate_metrics_lock:
+            # Capture snapshot of protected metrics
+            rate_wait_last = self._rate_wait_last
+            rate_wait_total = self._rate_wait_total
+
         return {
             "requests_in_window": len(self._request_window),
             "window_interval_sec": self.cfg.pacing_interval_sec,
@@ -529,12 +551,10 @@ class RealTwsFetcher:
             "total_requests": self._fresh_requests,
             "global_rate_max_requests": self.cfg.global_rate_max_requests,
             "global_rate_interval_sec": self.cfg.global_rate_interval_sec,
-            "global_rate_last_wait_sec": self._rate_wait_last,
-            "global_rate_total_wait_sec": self._rate_wait_total,
+            "global_rate_last_wait_sec": rate_wait_last,
+            "global_rate_total_wait_sec": rate_wait_total,
             "global_rate_wait_ratio": (
-                (self._rate_wait_total / self.cfg.global_rate_interval_sec)
-                if self.cfg.global_rate_interval_sec
-                else 0.0
+                (rate_wait_total / self.cfg.global_rate_interval_sec) if self.cfg.global_rate_interval_sec else 0.0
             ),
         }
 
