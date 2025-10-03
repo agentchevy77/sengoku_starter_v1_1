@@ -58,7 +58,7 @@ def test_real_threading_validates_race_conditions():
             self.run_called = False
             self.disconnect_called = False
 
-        def connect(self, host, port, clientId):
+        def connect(self, host, port, clientId):  # noqa: N803 - Matches TWS API signature
             self.connect_args = (host, port, clientId)
 
         def run(self):
@@ -108,7 +108,7 @@ def test_event_synchronization_is_real():
             self.ready = threading.Event()
             self.connect_args = None
 
-        def connect(self, host, port, clientId):
+        def connect(self, host, port, clientId):  # noqa: N803 - Matches TWS API signature
             self.connect_args = (host, port, clientId)
             timing["wait_start"] = time.time()
 
@@ -168,7 +168,7 @@ def test_thread_cleanup_is_validated():
             self.connect_args = None
             self.thread_id = None
 
-        def connect(self, host, port, clientId):
+        def connect(self, host, port, clientId):  # noqa: N803 - Matches TWS API signature
             self.connect_args = (host, port, clientId)
 
         def run(self):
@@ -248,7 +248,7 @@ def test_documentation_of_bug_22():
             self.ready = threading.Event()
             self.connect_args = None
 
-        def connect(self, host, port, clientId):
+        def connect(self, host, port, clientId):  # noqa: N803 - Matches TWS API signature
             self.connect_args = (host, port, clientId)
             execution_log.append("connect_called")
 
@@ -318,7 +318,7 @@ def test_backward_compatibility_maintained():
             self.disconnect_called = False
             self.cleanup_called = False
 
-        def connect(self, host, port, clientId):
+        def connect(self, host, port, clientId):  # noqa: N803 - Matches TWS API signature
             self.connect_args = (host, port, clientId)
 
         def run(self):

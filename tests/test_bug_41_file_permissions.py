@@ -178,7 +178,8 @@ DATABASE_URL: postgres://localhost
             SecretResolver(source=SecretSource.FILE, file_path=str(empty_file), strict_permissions=True)
 
         # In non-strict mode, should warn about permissions AND empty file
-        resolver = SecretResolver(source=SecretSource.FILE, file_path=str(empty_file), strict_permissions=False)
+        # Create resolver to trigger warnings (side effect test)
+        _ = SecretResolver(source=SecretSource.FILE, file_path=str(empty_file), strict_permissions=False)
 
         # Check for both warnings
         assert any("world-readable" in record.message for record in caplog.records)

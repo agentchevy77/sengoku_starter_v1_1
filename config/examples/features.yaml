@@ -1,2 +1,366 @@
+# Mock Market Features for Testing
+#
+# This file contains both happy-path scenarios and comprehensive edge cases
+# to ensure the system handles unusual market conditions gracefully.
+#
+# Format: {last, dma20, support, resistance, rvol, rs_strength, vwap_diff}
+#
+# Bug #38 FIX: Added comprehensive edge cases to prevent false sense of security
+
+# ============================================================================
+# HAPPY PATH SCENARIOS (Original Test Data)
+# ============================================================================
+
 AAA: {last: 105.0, dma20: 100.0, support: 101.0, resistance: 106.0, rvol: 1.6, rs_strength: 0.3, vwap_diff: 0.012}
 BBB: {last:  95.0, dma20: 100.0, support:  96.0, resistance: 100.0, rvol: 1.5, rs_strength: -0.25, vwap_diff: -0.012}
+
+# ============================================================================
+# EDGE CASE 1: VOLUME EXTREMES
+# ============================================================================
+
+# Zero volume - tests division by zero and volume-based calculations
+EDGE_ZERO_VOLUME:
+  last: 100.0
+  dma20: 95.0
+  support: 90.0
+  resistance: 110.0
+  rvol: 0.0  # No volume
+  rs_strength: 0.1
+  vwap_diff: 0.0
+
+# Extremely low volume - tests low liquidity scenarios
+EDGE_LOW_LIQUIDITY:
+  last: 50.0
+  dma20: 48.0
+  support: 45.0
+  resistance: 55.0
+  rvol: 0.05  # 5% of average volume
+  rs_strength: 0.0
+  vwap_diff: 0.001
+
+# Extremely high volume - tests volume spike scenarios
+EDGE_EXTREME_VOLUME:
+  last: 150.0
+  dma20: 145.0
+  support: 140.0
+  resistance: 155.0
+  rvol: 15.0  # 15x average volume (climactic)
+  rs_strength: 0.4
+  vwap_diff: 0.025
+
+# ============================================================================
+# EDGE CASE 2: PRICE AT EXACT BOUNDARIES
+# ============================================================================
+
+# Price exactly at resistance - tests breakout threshold logic
+EDGE_AT_RESISTANCE:
+  last: 110.0
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0  # Exactly at resistance
+  rvol: 1.3
+  rs_strength: 0.2
+  vwap_diff: 0.01
+
+# Price exactly at support - tests breakdown threshold logic
+EDGE_AT_SUPPORT:
+  last: 100.0  # Exactly at support
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0
+  rvol: 1.4
+  rs_strength: -0.1
+  vwap_diff: -0.008
+
+# Price exactly at DMA20 - tests trend alignment logic
+EDGE_AT_DMA20:
+  last: 105.0  # Exactly at DMA20
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0
+  rvol: 1.0
+  rs_strength: 0.0
+  vwap_diff: 0.0
+
+# ============================================================================
+# EDGE CASE 3: EXTREME BREAKOUTS AND BREAKDOWNS
+# ============================================================================
+
+# Far above resistance - tests extreme breakout/exhaustion
+EDGE_EXTREME_BREAKOUT:
+  last: 130.0  # 18% above resistance
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0
+  rvol: 2.5
+  rs_strength: 0.5
+  vwap_diff: 0.08
+
+# Far below support - tests extreme breakdown
+EDGE_EXTREME_BREAKDOWN:
+  last: 82.0  # 18% below support
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0
+  rvol: 3.0
+  rs_strength: -0.6
+  vwap_diff: -0.09
+
+# ============================================================================
+# EDGE CASE 4: SPREAD EXTREMES
+# ============================================================================
+
+# Zero spread - tests handling when support == resistance
+EDGE_ZERO_SPREAD:
+  last: 100.0
+  dma20: 100.0
+  support: 100.0
+  resistance: 100.0  # Same as support (no range)
+  rvol: 1.0
+  rs_strength: 0.0
+  vwap_diff: 0.0
+
+# Tiny spread - tests very tight trading range
+EDGE_TINY_SPREAD:
+  last: 100.02
+  dma20: 100.0
+  support: 100.0
+  resistance: 100.05  # Only 0.05% spread
+  rvol: 0.8
+  rs_strength: 0.02
+  vwap_diff: 0.0001
+
+# Huge spread - tests very wide trading range (volatile)
+EDGE_HUGE_SPREAD:
+  last: 100.0
+  dma20: 100.0
+  support: 50.0
+  resistance: 150.0  # 100% spread (extremely volatile)
+  rvol: 2.0
+  rs_strength: 0.1
+  vwap_diff: 0.01
+
+# ============================================================================
+# EDGE CASE 5: RELATIVE STRENGTH EXTREMES
+# ============================================================================
+
+# Extremely strong relative strength
+EDGE_EXTREME_RS_POSITIVE:
+  last: 120.0
+  dma20: 115.0
+  support: 110.0
+  resistance: 125.0
+  rvol: 1.8
+  rs_strength: 0.8  # Very strong relative to market
+  vwap_diff: 0.03
+
+# Extremely weak relative strength
+EDGE_EXTREME_RS_NEGATIVE:
+  last: 80.0
+  dma20: 85.0
+  support: 75.0
+  resistance: 90.0
+  rvol: 1.9
+  rs_strength: -0.9  # Very weak relative to market
+  vwap_diff: -0.04
+
+# Zero relative strength
+EDGE_ZERO_RS:
+  last: 100.0
+  dma20: 100.0
+  support: 95.0
+  resistance: 105.0
+  rvol: 1.0
+  rs_strength: 0.0  # Neutral relative strength
+  vwap_diff: 0.0
+
+# ============================================================================
+# EDGE CASE 6: VWAP DEVIATION EXTREMES
+# ============================================================================
+
+# Extreme positive VWAP deviation
+EDGE_VWAP_EXTREME_POSITIVE:
+  last: 150.0
+  dma20: 140.0
+  support: 130.0
+  resistance: 160.0
+  rvol: 2.2
+  rs_strength: 0.3
+  vwap_diff: 0.15  # 15% above VWAP (very extended)
+
+# Extreme negative VWAP deviation
+EDGE_VWAP_EXTREME_NEGATIVE:
+  last: 85.0
+  dma20: 90.0
+  support: 80.0
+  resistance: 95.0
+  rvol: 2.1
+  rs_strength: -0.2
+  vwap_diff: -0.12  # 12% below VWAP (very oversold)
+
+# ============================================================================
+# EDGE CASE 7: EXHAUSTION SCENARIOS
+# ============================================================================
+
+# High exhaustion bullish - far above DMA20 with high volume
+EDGE_EXHAUSTION_BULL:
+  last: 125.0  # 19% above DMA20
+  dma20: 105.0
+  support: 100.0
+  resistance: 115.0
+  rvol: 2.8
+  rs_strength: 0.4
+  vwap_diff: 0.06
+
+# High exhaustion bearish - far below DMA20 with high volume
+EDGE_EXHAUSTION_BEAR:
+  last: 85.0  # 19% below DMA20
+  dma20: 105.0
+  support: 90.0
+  resistance: 110.0
+  rvol: 2.9
+  rs_strength: -0.5
+  vwap_diff: -0.07
+
+# ============================================================================
+# EDGE CASE 8: CHOPPY/INDECISIVE MARKET
+# ============================================================================
+
+# Choppy - price in middle of range, at DMA20, neutral indicators
+EDGE_CHOPPY:
+  last: 105.0  # Middle of support-resistance range, at DMA20
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0
+  rvol: 0.9  # Below average volume
+  rs_strength: 0.01  # Neutral
+  vwap_diff: 0.002  # Near VWAP
+
+# ============================================================================
+# EDGE CASE 9: INVALID/CORRUPT DATA SCENARIOS
+# ============================================================================
+
+# Inverted levels - support above resistance (data error)
+EDGE_INVERTED_LEVELS:
+  last: 105.0
+  dma20: 105.0
+  support: 110.0  # Invalid: support > resistance
+  resistance: 100.0
+  rvol: 1.0
+  rs_strength: 0.0
+  vwap_diff: 0.0
+
+# Zero price - invalid scenario
+EDGE_ZERO_PRICE:
+  last: 0.0  # Invalid: zero price
+  dma20: 100.0
+  support: 95.0
+  resistance: 105.0
+  rvol: 1.0
+  rs_strength: 0.0
+  vwap_diff: 0.0
+
+# Negative price - invalid scenario
+EDGE_NEGATIVE_PRICE:
+  last: -10.0  # Invalid: negative price
+  dma20: 100.0
+  support: 95.0
+  resistance: 105.0
+  rvol: 1.0
+  rs_strength: 0.0
+  vwap_diff: 0.0
+
+# All zeros (except last) - tests zero-handling throughout
+EDGE_ALL_ZEROS:
+  last: 100.0
+  dma20: 0.0
+  support: 0.0
+  resistance: 0.0
+  rvol: 0.0
+  rs_strength: 0.0
+  vwap_diff: 0.0
+
+# ============================================================================
+# EDGE CASE 10: MICRO-PRICE STOCKS (Penny Stocks)
+# ============================================================================
+
+# Penny stock - very low absolute prices
+EDGE_PENNY_STOCK:
+  last: 0.15
+  dma20: 0.18
+  support: 0.10
+  resistance: 0.20
+  rvol: 3.5  # High volume typical for penny stocks
+  rs_strength: -0.3
+  vwap_diff: -0.02
+
+# ============================================================================
+# EDGE CASE 11: HIGH-PRICE STOCKS
+# ============================================================================
+
+# Very high price stock (like BRK.A)
+EDGE_HIGH_PRICE:
+  last: 450000.0
+  dma20: 440000.0
+  support: 430000.0
+  resistance: 460000.0
+  rvol: 0.6  # Low volume typical for high-price stocks
+  rs_strength: 0.15
+  vwap_diff: 0.008
+
+# ============================================================================
+# EDGE CASE 12: NEAR-THRESHOLD SCENARIOS
+# ============================================================================
+
+# Just below breakout threshold (gap = 0.011, threshold = 0.01)
+EDGE_NEAR_BREAKOUT_THRESHOLD:
+  last: 109.89  # 0.1% below resistance
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0
+  rvol: 1.25  # Just above rvol threshold (1.2)
+  rs_strength: 0.11  # Just above rs threshold (0.1)
+  vwap_diff: 0.0099  # Just below 1%
+
+# Just above breakdown threshold
+EDGE_NEAR_BREAKDOWN_THRESHOLD:
+  last: 100.11  # 0.1% above support
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0
+  rvol: 1.19  # Just below rvol threshold (1.2)
+  rs_strength: -0.09  # Just above rs threshold (-0.1)
+  vwap_diff: -0.0099  # Just above -1%
+
+# ============================================================================
+# EDGE CASE 13: SUSTAINABILITY TEST CASES
+# ============================================================================
+
+# High momentum but low sustainability
+EDGE_LOW_SUSTAINABILITY:
+  last: 115.0
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0
+  rvol: 0.7  # Low volume (unsustainable move)
+  rs_strength: 0.05  # Weak RS
+  vwap_diff: 0.04  # Extended from VWAP
+
+# Strong setup with high sustainability
+EDGE_HIGH_SUSTAINABILITY:
+  last: 112.0
+  dma20: 105.0
+  support: 100.0
+  resistance: 110.0
+  rvol: 2.0  # Good volume
+  rs_strength: 0.35  # Strong RS
+  vwap_diff: 0.015  # Not too extended
+
+# ============================================================================
+# EDGE CASE 14: MISSING FIELDS (Optional)
+# ============================================================================
+
+# Note: YAML doesn't easily support missing fields in this format.
+# In a real implementation, missing fields would be tested via
+# programmatic test cases or by modifying the parser to handle
+# partially populated dictionaries.

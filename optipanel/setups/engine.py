@@ -98,6 +98,15 @@ class SetupConfig:
     exhaustion_rvol_thresh: float = 1.5  # Relative volume threshold
     exhaustion_rvol_bonus: float = 10.0  # Bonus for extreme volume
 
+    # === ADVICE LOGIC RISK THRESHOLDS (Bug #39 fix) ===
+    # These thresholds gate the advice recommendations in build_symbol_snapshot()
+    # to prevent dangerous trades on overextended or unreliable signals.
+    advice_exhaustion_veto: float = 70.0  # Max exhaustion score before vetoing attack/defend (too climactic)
+    advice_sustainability_min: float = (
+        40.0  # Min sustainability score required for attack/defend (move must be reliable)
+    )
+    advice_fakeout_risk_max: float = 70.0  # Max fakeout risk before vetoing attack/defend (likely false signal)
+
 
 def _as_decimal(value: object, default: Decimal = D_ZERO) -> Decimal:
     """Safely convert value to Decimal, returning default on failure.

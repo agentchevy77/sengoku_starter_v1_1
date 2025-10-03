@@ -164,7 +164,8 @@ class TestAsyncTaskManagement:
         with patch("optipanel.ui.textual.minimal.asyncio.wait_for") as mock_wait_for:
             mock_wait_for.side_effect = TimeoutError()
 
-            result = await app._refresh_once_with_generation(1)
+            # Call the method (testing side effects, not return value)
+            await app._refresh_once_with_generation(1)
 
             # Should display timeout error message
             mock_pane.display.assert_called_once()
@@ -185,6 +186,7 @@ class TestRefreshLogic:
             app._schedule_refresh(force=False)
             # asyncio.create_task is not called when paused
             # Since _schedule_refresh returns early, no task is created
+            mock_async.assert_not_called()
 
     def test_force_refresh_overrides_pause(self):
         """Test that force refresh works even when paused."""
@@ -240,7 +242,8 @@ class TestErrorHandling:
         with patch("optipanel.ui.textual.minimal.asyncio.wait_for") as mock_wait_for:
             mock_wait_for.side_effect = RuntimeError("Backend failed")
 
-            result = await app._refresh_once_with_generation(1)
+            # Call the method (testing side effects, not return value)
+            await app._refresh_once_with_generation(1)
 
             # Should display error message
             mock_pane.display.assert_called_once()
@@ -385,7 +388,7 @@ class TestConcurrentRefreshScenarios:
 
         # Create a slow refresh task
         async def slow_refresh():
-            try:
+            try:  # noqa: SIM105 - Explicit exception handling for test clarity
                 await asyncio.sleep(1.0)
             except asyncio.CancelledError:
                 pass  # Cleanly handle cancellation
@@ -418,7 +421,7 @@ class TestMainFunction:
         """Test main function with required arguments."""
         from optipanel.ui.textual.minimal import main
 
-        with patch("optipanel.ui.textual.minimal.SengokuMinimalTui") as MockTui:
+        with patch("optipanel.ui.textual.minimal.SengokuMinimalTui") as MockTui:  # noqa: N806 - Mock matches class name
             mock_app = Mock()
             MockTui.return_value = mock_app
 
@@ -432,7 +435,7 @@ class TestMainFunction:
         """Test main function with all arguments."""
         from optipanel.ui.textual.minimal import main
 
-        with patch("optipanel.ui.textual.minimal.SengokuMinimalTui") as MockTui:
+        with patch("optipanel.ui.textual.minimal.SengokuMinimalTui") as MockTui:  # noqa: N806 - Mock matches class name
             mock_app = Mock()
             MockTui.return_value = mock_app
 
