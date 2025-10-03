@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -10,6 +11,8 @@ from optipanel.utils.decimal_types import (
     to_decimal,
     to_float,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _coerce_price(value: Any) -> Decimal | None:
@@ -94,20 +97,47 @@ class PositionState:
             self.cooldown.pop(s, None)
 
     def _should_exit(self, sym: str, last: Decimal, setups: dict[str, int], th: dict[str, float]) -> bool:
-        """Check exit conditions with precise Decimal calculations."""
+        """Check exit conditions with precise Decimal calculations.
+
+        Bug #47 FIX: Added comprehensive validation for Decimal values to prevent
+        invalid calculations that could trigger incorrect trading decisions.
+        """
         pos = self.positions.get(sym)
         if not pos:
             return False
+
+        # Bug #47 FIX: Validate 'last' parameter is a valid Decimal for calculations
+        # Check for None, NaN, inf, or non-positive values
+        if last is None or not isinstance(last, Decimal):
+            logger.error(f"Invalid 'last' price for {sym}: {last} (type: {type(last).__name__})")
+            return False
+
+        if not last.is_finite() or last <= D_ZERO:
+            logger.error(f"Invalid 'last' price for {sym}: {last} (not finite or non-positive)")
+            return False
+
         # threshold exits
         if setups.get("breakdown_down", 0) >= th["exit_breakdown"]:
             return True
         if setups.get("trend_short", 0) >= th["exit_trend"]:
             return True
+
         # stop / take - using Decimal for precise percentage calculations
-        if abs(pos.avg_px) < Decimal("1e-9"):
+        # Bug #47 FIX: Additional validation for pos.avg_px before division
+        if not isinstance(pos.avg_px, Decimal) or not pos.avg_px.is_finite() or abs(pos.avg_px) < Decimal("1e-9"):
+            logger.warning(f"Invalid avg_px for {sym}: {pos.avg_px}, using zero change")
             change = D_ZERO
         else:
-            change = (last / pos.avg_px) - Decimal("1")
+            try:
+                # Bug #47 FIX: Wrapped division in try-except for extra safety
+                change = (last / pos.avg_px) - Decimal("1")
+                # Validate the result is finite
+                if not change.is_finite():
+                    logger.error(f"Non-finite change calculated for {sym}: last={last}, avg_px={pos.avg_px}")
+                    change = D_ZERO
+            except (ArithmeticError, ValueError) as e:
+                logger.error(f"Error calculating change for {sym}: {e}")
+                change = D_ZERO
 
         stop_loss_d = Decimal(str(th["stop_loss"]))
         take_profit_d = Decimal(str(th["take_profit"]))
@@ -181,6 +211,10 @@ class PositionState:
             setups = _get_setups(sym, f)
             if self._should_enter_long(sym, setups, th):
                 risk_cap = self.cash * Decimal(str(th.get("risk_per_trade", 0.02)))
+                # Bug #47 FIX: Defensive validation before division operations
+                if last <= D_ZERO:
+                    logger.error(f"Invalid last price for entry calculation: {sym}={last}")
+                    continue
                 qty = max(0, int(risk_cap / last))
                 if qty <= 0:
                     continue
