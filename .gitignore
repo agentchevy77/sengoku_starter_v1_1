@@ -21,3 +21,4 @@ runs/
 
 # Testing artifacts
 .coverage
+*_demo_*.json
