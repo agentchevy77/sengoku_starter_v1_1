@@ -139,6 +139,26 @@ class TestRefreshRaceCondition:
                 mock_app._inflight.cancel()
                 await mock_app._inflight.wait(suppress_cancel=True)
 
+    @pytest.mark.asyncio
+    async def test_schedule_refresh_tracks_background_task(self, mock_app):
+        """Bug #62: background scheduler tasks retain references until completion."""
+
+        blocker = asyncio.Event()
+
+        async def slow_schedule(force: bool) -> None:  # noqa: ARG001 - signature required
+            await blocker.wait()
+
+        with patch.object(mock_app, "_schedule_refresh_async", side_effect=slow_schedule):
+            mock_app._schedule_refresh()
+            await asyncio.sleep(0)  # Allow task to be created
+            assert mock_app._background_tasks, "Background task should be tracked"
+            task = next(iter(mock_app._background_tasks))
+            assert not task.done()
+
+            blocker.set()
+            await asyncio.sleep(0)  # Let task finish
+            assert task not in mock_app._background_tasks
+
     def test_check_then_act_pattern_fixed(self):
         """Verify the fix has been applied correctly."""
         # Read the source code to verify the fix
