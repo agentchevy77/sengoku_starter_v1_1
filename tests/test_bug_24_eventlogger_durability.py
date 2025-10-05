@@ -269,10 +269,16 @@ class TestPerformance:
 
             results[level.name] = elapsed
 
-        # PERFORMANCE should be fastest (no flush)
-        assert results["PERFORMANCE"] <= results["STANDARD"]
-        # PARANOID should be slowest (flush + fsync)
-        assert results["STANDARD"] <= results["PARANOID"]
+        # PERFORMANCE should be fastest (no flush). Allow tiny tolerance to avoid
+        # flakes caused by scheduler jitter when timings differ by microseconds.
+        tolerance = 0.002  # 2ms tolerance for noisy environments
+        assert (
+            results["PERFORMANCE"] <= results["STANDARD"] + tolerance
+        ), f"PERFORMANCE mode slower than STANDARD by {results['PERFORMANCE'] - results['STANDARD']:.6f}s"
+        # PARANOID should be slowest (flush + fsync) within same tolerance window.
+        assert (
+            results["STANDARD"] <= results["PARANOID"] + tolerance
+        ), f"STANDARD mode slower than PARANOID by {results['STANDARD'] - results['PARANOID']:.6f}s"
 
         # Verify reasonable performance (not hanging)
         for level_name, elapsed in results.items():
@@ -463,7 +469,7 @@ class TestIntegration:
 
         # Write some complete events
         path1 = logger1.emit("complete1", {"data": "first"})
-        path2 = logger1.emit("complete2", {"data": "second"})
+        logger1.emit("complete2", {"data": "second"})
 
         # Simulate partial write (as if crashed mid-write) by appending corrupt data
         with open(path1, "a") as f:
@@ -472,7 +478,7 @@ class TestIntegration:
 
         # New logger instance (simulating restart after crash)
         logger2 = EventLogger(log_dir=str(tmp_path), durability=DurabilityLevel.STANDARD)
-        path3 = logger2.emit("after_crash", {"data": "recovered"})
+        logger2.emit("after_crash", {"data": "recovered"})
 
         # Read and verify file integrity
         with open(path1) as f:

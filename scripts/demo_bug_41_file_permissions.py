@@ -159,7 +159,7 @@ def demo_various_permissions():
             test_file.chmod(mode)
 
             try:
-                resolver = SecretResolver(source=SecretSource.FILE, file_path=str(test_file), strict_permissions=True)
+                SecretResolver(source=SecretSource.FILE, file_path=str(test_file), strict_permissions=True)
                 result = "✅ ACCEPTED"
             except PermissionError:
                 result = "🚫 REJECTED"

@@ -448,7 +448,7 @@ class ProcessSafeLock:
                     self.lock_file.parent.mkdir(parents=True, exist_ok=True)
 
                     # Open lock file (create if doesn't exist)
-                    self.lock_handle = open(self.lock_file, "a")
+                    self.lock_handle = open(self.lock_file, "a")  # noqa: SIM115
 
                     # Try to acquire exclusive lock (non-blocking)
                     fcntl.flock(self.lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -464,35 +464,38 @@ class ProcessSafeLock:
                 except OSError:
                     # Lock is held by another process
                     if self.lock_handle:
-                        try:
+                        with suppress(Exception):
                             self.lock_handle.close()
-                        except Exception:
-                            pass
                         self.lock_handle = None
+
+                    # FIX Bug #90: Ensure sleep duration respects the remaining time budget.
+                    time_remaining = self.timeout - (time.time() - start_time)
+
+                    # Exit if timeout already reached (with tiny buffer to avoid thrashing).
+                    if time_remaining <= 0.001:
+                        break
 
                     # Exponential backoff with jitter
                     if retry_count < self.max_retries:
                         delay = base_delay * (2**retry_count)
                         jitter = random.uniform(0, delay * 0.1)  # 10% jitter
-                        time.sleep(min(delay + jitter, 1.0))  # Cap at 1 second
+                        sleep_duration = min(delay + jitter, 1.0, time_remaining)
+                        time.sleep(sleep_duration)
                         retry_count += 1
                     else:
-                        time.sleep(0.1)  # Fixed delay after max retries
+                        sleep_duration = min(0.1, time_remaining)
+                        time.sleep(sleep_duration)
 
                 except Exception as e:
                     # Unexpected error
                     if self.lock_handle:
-                        try:
+                        with suppress(Exception):
                             self.lock_handle.close()
-                        except Exception:
-                            pass
                         self.lock_handle = None
 
                     # Log error but continue trying
-                    try:
+                    with suppress(Exception):
                         sys.stderr.write(f"Lock acquisition error: {e}\\n")
-                    except Exception:
-                        pass
 
                     time.sleep(0.1)
 
@@ -502,20 +505,15 @@ class ProcessSafeLock:
         """Release the lock."""
         with self._local_lock:
             if self.lock_handle:
-                try:
+                with suppress(Exception):
                     # Release lock and close file
                     fcntl.flock(self.lock_handle.fileno(), fcntl.LOCK_UN)
                     self.lock_handle.close()
-                except Exception:
-                    pass
-                finally:
-                    self.lock_handle = None
+                self.lock_handle = None
 
                 # Try to remove lock file (best effort)
-                try:
+                with suppress(Exception):
                     self.lock_file.unlink()
-                except Exception:
-                    pass
 
     def __enter__(self):
         """Context manager entry."""
@@ -599,7 +597,7 @@ class SafeLogRotationManager:
                     return None
 
                 # Generate unique rotation name with PID to avoid collisions
-                timestamp = int(time.time() * 1000000)  # Microseconds
+                timestamp = time.monotonic_ns()
                 pid = os.getpid()
                 rotated_name = f"{file_path.stem}.{timestamp}-{pid}{file_path.suffix}"
                 rotated_path = file_path.parent / rotated_name
@@ -677,10 +675,8 @@ class SafeLogRotationManager:
                     return removed
 
                 # Safe sort with error handling
-                try:
+                with suppress(Exception):
                     log_files.sort(key=lambda p: p.stat().st_mtime)
-                except Exception:
-                    pass  # Continue with unsorted if sort fails
 
                 # Remove old files
                 for file_path in log_files:

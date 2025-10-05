@@ -224,7 +224,7 @@ class TestPositionDecimalPrecision:
         state = PositionState(cash=Decimal("1000.00"))
 
         # Simulate 100 micro-trades
-        for i in range(100):
+        for _ in range(100):
             # Each trade: spend $0.01, gain $0.011 (0.1 cent profit)
             state.cash -= Decimal("0.01")
             state.cash += Decimal("0.011")
@@ -399,7 +399,7 @@ def test_integration_full_pipeline():
     state = PositionState(cash=Decimal("100000.00"))
 
     # Entry features (bullish setup)
-    entry_features = {
+    _entry_features = {
         "TEST": {
             "last": 100.00,
             "dma20": 95.0,
@@ -419,7 +419,7 @@ def test_integration_full_pipeline():
     state.positions["TEST"] = Position("TEST", qty, last)
 
     # Exit features (bearish reversal)
-    exit_features = {
+    _exit_features = {
         "TEST": {
             "last": 105.00,  # 5% gain
             "dma20": 95.0,

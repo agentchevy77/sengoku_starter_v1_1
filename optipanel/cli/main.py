@@ -30,26 +30,15 @@ from optipanel.recon.enrich import (
 )
 from optipanel.recon.readiness import readiness_from_front_sustain
 from optipanel.setups.engine import compute_setups
-
-
-# Safe type conversion helpers
-def safe_int(value: Any, default: int = 0) -> int:
-    """Safely convert value to int with fallback."""
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return default
-
-
-def safe_float(value: Any, default: float = 0.0) -> float:
-    """Safely convert value to float with fallback."""
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
-
+from optipanel.utils.error_sanitizer import ErrorSanitizer
+from optipanel.utils.safe_ops import safe_int_env
 
 _LOG_INITIALIZED = False
+
+# FIX for Bug #53: Initialize error sanitizer for safe error message handling
+# This prevents information disclosure by sanitizing exception messages before
+# displaying them to users while preserving full details in logs
+_error_sanitizer = ErrorSanitizer()
 
 _MICRO_SPECS = (
     ("M15", "15m", compute_microchips_m15),
@@ -77,6 +66,45 @@ _SUPPLY_ORDER = (
 )
 
 
+def _format_json_decode_error(exc: Exception, label: str) -> str:
+    """Return a user-facing message for JSON parse failures.
+
+    We normalise differences between the stdlib ``json`` module and optional
+    accelerated parsers (e.g. orjson) so the CLI always surfaces clear,
+    user-friendly diagnostics.  The sanitizer still logs full details, but the
+    returned string is what is shown to the operator.
+    """
+
+    context = f"{label} JSON"
+    sanitized = _error_sanitizer.sanitize(exc, context=context)
+
+    # In production we rely on the generic message produced by the sanitizer to
+    # avoid leaking implementation details.
+    if _error_sanitizer.is_production:
+        return sanitized
+
+    # Development mode: offer human-readable wording independent of the parser
+    # backend (stdlib vs orjson).  When the parser reaches EOF while still
+    # expecting more input we translate the message to "unexpected end of data"
+    # for consistency with orjson's phrasing and the existing test contract.
+    msg = getattr(exc, "msg", str(exc)).strip()
+    doc = getattr(exc, "doc", None)
+    pos = getattr(exc, "pos", None)
+
+    eof = False
+    if isinstance(doc, (str, bytes)) and isinstance(pos, int):
+        try:
+            eof = pos >= len(doc)
+        except TypeError:
+            eof = False
+
+    friendly = "unexpected end of data" if eof else msg.lower()
+
+    if context:
+        return f"{friendly} (in {context})"
+    return friendly
+
+
 def _load_json_arg(raw: str, label: str, validator: str | None = None) -> Any:
     """Parse and validate CLI JSON arguments with helpful error messages.
 
@@ -94,8 +122,15 @@ def _load_json_arg(raw: str, label: str, validator: str | None = None) -> Any:
     # Parse JSON
     try:
         data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        safe_msg = _format_json_decode_error(exc, label)
+        print(f"Error: {safe_msg}.", file=sys.stderr)
+        raise SystemExit(2) from exc
     except (TypeError, ValueError) as exc:
-        print(f"Error: invalid {label} JSON syntax ({exc}).", file=sys.stderr)
+        # FIX for Bug #53: Use sanitized error message to prevent information disclosure
+        # Full error details are logged, but only safe message shown to user
+        safe_msg = _error_sanitizer.sanitize(exc, context=f"{label} JSON")
+        print(f"Error: {safe_msg}.", file=sys.stderr)
         raise SystemExit(2) from exc
 
     # Validate structure if validator specified
@@ -108,10 +143,15 @@ def _load_json_arg(raw: str, label: str, validator: str | None = None) -> Any:
             elif validator == "profile":
                 return InputValidator.validate_profile_json(data)
         except ValidationError as exc:
-            print(f"Error: invalid {label} structure - {exc}", file=sys.stderr)
-            if exc.field:
+            # FIX for Bug #53: Use sanitized error message for validation errors
+            # Validation errors from our own code are safer, but still sanitize to be consistent
+            safe_msg = _error_sanitizer.sanitize(exc, context=f"{label} validation")
+            print(f"Error: {safe_msg}", file=sys.stderr)
+            # Field and details are from our own validation, so they're safer to show
+            # but we still sanitize them in production mode
+            if exc.field and not _error_sanitizer.is_production:
                 print(f"  Field: {exc.field}", file=sys.stderr)
-            if exc.details:
+            if exc.details and not _error_sanitizer.is_production:
                 print(f"  Details: {exc.details}", file=sys.stderr)
             raise SystemExit(2) from exc
 
@@ -271,11 +311,8 @@ def setup_logging() -> None:
 
     logging.basicConfig(level=level, format="%(asctime)s - %(levelname)s - %(message)s", handlers=handlers)
 
-    # Safe integer conversion for max log files
-    try:
-        max_logs = int(os.environ.get("SENGOKU_MAX_LOG_FILES", "0"))
-    except (ValueError, TypeError):
-        max_logs = 0
+    # Safe integer conversion for max log files - Bug #59 fix
+    max_logs = safe_int_env("SENGOKU_MAX_LOG_FILES", default=0)
     if max_logs > 0:
         existing = sorted(log_dir.glob("sengoku_*.log"))
         excess = len(existing) - max_logs

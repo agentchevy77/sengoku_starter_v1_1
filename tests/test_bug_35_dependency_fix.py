@@ -222,9 +222,8 @@ class TestBug35RegressionPrevention:
 
         # Get all declared dependencies from pyproject.toml
         try:
-            # Get all dependencies including extras
-            dist = importlib.metadata.distribution("optipanel-sengoku")
-            declared_deps = set()
+            # Get all dependencies including extras (ensures package metadata exists)
+            importlib.metadata.distribution("optipanel-sengoku")
 
             # This would require parsing metadata, so we'll do a simpler check
             # Just verify key scripts don't have obvious missing deps

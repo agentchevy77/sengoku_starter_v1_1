@@ -7,6 +7,7 @@ in the UI refresh logic that allowed multiple concurrent refresh tasks.
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -49,105 +50,76 @@ class TestRefreshRaceCondition:
             tasks_created.append(task)
             return task
 
-        with patch("asyncio.create_task", side_effect=track_create_task):
-            with patch("optipanel.ui.service.run_tick", new_callable=AsyncMock) as mock_run_tick:
-                mock_run_tick.return_value = {"panel": "test_data"}
+        with (
+            patch("asyncio.create_task", side_effect=track_create_task),
+            patch("optipanel.ui.service.run_tick", new_callable=AsyncMock) as mock_run_tick,
+        ):
+            mock_run_tick.return_value = {"panel": "test_data"}
 
-                # Simulate concurrent calls to _schedule_refresh
-                # This mimics what happens when timer fires while user presses 'R'
+            # Simulate concurrent calls to _schedule_refresh
+            # This mimics what happens when timer fires while user presses 'R'
 
-                # Start first refresh (simulating timer)
-                mock_app._schedule_refresh()
+            # Start first refresh (simulating timer)
+            mock_app._schedule_refresh()
 
-                # Immediately start second refresh (simulating user pressing 'R')
-                # In the original code, this can pass the check before the first
-                # task is assigned to self._inflight
-                mock_app._schedule_refresh(force=True)
+            # Immediately start second refresh (simulating user pressing 'R')
+            mock_app._schedule_refresh(force=True)
 
-                # In a race condition scenario, both could create tasks
-                # We expect this to potentially create 2 tasks due to the race
+            # Give tasks a chance to start
+            await asyncio.sleep(0.01)
 
-                # Give tasks a chance to start
-                await asyncio.sleep(0.01)
+            assert len(tasks_created) >= 1, "At least one task should be created"
 
-                # With the race condition, we might have created multiple tasks
-                # (This test may not always trigger the race, but demonstrates the issue)
-                assert len(tasks_created) >= 1, "At least one task should be created"
-
-                # Clean up tasks
-                for task in tasks_created:
-                    if not task.done():
-                        task.cancel()
-                        try:
-                            await task
-                        except asyncio.CancelledError:
-                            pass
+            # Clean up tasks
+            for task in tasks_created:
+                if not task.done():
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
 
     @pytest.mark.asyncio
     async def test_orphaned_task_scenario(self, mock_app):
-        """Test that demonstrates orphaned task scenario (Issue #15)."""
-        slow_task_completed = False
-        fast_task_completed = False
+        """Test that demonstrates orphaned task scenario (Issue #15) is now fixed.
 
-        async def slow_refresh():
-            """Simulate a slow refresh operation."""
-            nonlocal slow_task_completed
-            await asyncio.sleep(0.5)  # Simulate slow operation
-            slow_task_completed = True
-            return "slow_data"
+        With TaskHandle (Bug #48 fix), tasks can no longer complete before
+        their reference is stored, preventing the orphaned task issue.
+        """
 
-        async def fast_refresh():
-            """Simulate a fast refresh operation."""
-            nonlocal fast_task_completed
-            await asyncio.sleep(0.1)  # Simulate fast operation
-            fast_task_completed = True
-            return "fast_data"
+        # Test using direct async scheduling to have more control
+        async def mock_refresh(gen):
+            """Mock refresh that tracks execution."""
+            await asyncio.sleep(0.1)
+            return f"data_gen_{gen}"
 
-        # Create and track tasks
-        with patch.object(mock_app, "_refresh_once", side_effect=[slow_refresh(), fast_refresh()]):
-            # Start slow task
-            mock_app._schedule_refresh()
-            task1 = mock_app._inflight
+        with patch.object(mock_app, "_refresh_once_with_generation", side_effect=mock_refresh):
+            # Call the async scheduling directly for reliable testing
+            await mock_app._schedule_refresh_async(force=False)
+            # At this point, task should be running
+            assert mock_app._inflight is not None
+            assert mock_app._inflight.is_running()
 
-            # Simulate race: second call overwrites _inflight before first completes
-            await asyncio.sleep(0.01)  # Small delay to let first task start
-            mock_app._inflight = None  # Simulate the race condition state
-            mock_app._schedule_refresh(force=True)
-            task2 = mock_app._inflight
+            # Wait for it to complete
+            await mock_app._inflight.wait()
 
-            # Wait for both tasks to complete
-            await asyncio.sleep(0.6)
+            # Task should now be done
+            assert not mock_app._inflight.is_running()
 
-            # Both tasks complete even though task1 was orphaned
-            assert slow_task_completed, "Orphaned slow task still completes"
-            assert fast_task_completed, "Fast task completes"
-
-            # This demonstrates the problem: slow task updates UI after fast task
-            # In real scenario, this causes stale data to overwrite fresh data
-
-            # Clean up
-            for task in [task1, task2]:
-                if task and not task.done():
-                    task.cancel()
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
+            # The key fix (Bug #48): task reference was always valid
+            # throughout the lifecycle - no orphaned tasks possible
 
     @pytest.mark.asyncio
     async def test_concurrent_refresh_calls_stress_test(self, mock_app):
         """Stress test to expose race conditions with many concurrent calls."""
         call_count = 0
 
-        async def mock_refresh():
+        async def mock_refresh(gen):
             nonlocal call_count
             call_count += 1
             await asyncio.sleep(0.01)
             return f"data_{call_count}"
 
-        with patch.object(mock_app, "_refresh_once", side_effect=mock_refresh):
+        with patch.object(mock_app, "_refresh_once_with_generation", side_effect=mock_refresh):
             # Simulate many concurrent refresh attempts
-            tasks = []
             for i in range(10):
                 # Mix of regular and forced refreshes
                 force = i % 3 == 0
@@ -158,17 +130,14 @@ class TestRefreshRaceCondition:
             # Wait for all operations to complete
             await asyncio.sleep(0.2)
 
-            # With race conditions, we might get multiple concurrent refreshes
-            # The exact count depends on timing, but it demonstrates the issue
+            # With the fixes (Issue #14 lock + Bug #48 TaskHandle),
+            # we prevent multiple concurrent refreshes
             print(f"Refresh operations executed: {call_count}")
 
-            # Clean up any remaining task
-            if mock_app._inflight and not mock_app._inflight.done():
+            # Clean up any remaining task - TaskHandle uses is_running()
+            if mock_app._inflight and mock_app._inflight.is_running():
                 mock_app._inflight.cancel()
-                try:
-                    await mock_app._inflight
-                except asyncio.CancelledError:
-                    pass
+                await mock_app._inflight.wait(suppress_cancel=True)
 
     def test_check_then_act_pattern_fixed(self):
         """Verify the fix has been applied correctly."""
@@ -183,7 +152,7 @@ class TestRefreshRaceCondition:
             assert "async with self._refresh_lock:" in source
             assert "_refresh_once_with_generation" in source
             assert "asyncio.wait_for" in source  # Timeout fix for Issue #16
-            assert "timeout=30.0" in source  # 30 second timeout
+            assert "timeout=self._ui_config.refresh_timeout" in source
 
             print("✓ Confirmed: All fixes have been applied to source")
 
@@ -206,10 +175,8 @@ class TestRefreshRaceCondition:
                         if force:
                             # Cancel the old task when forcing
                             self._inflight.cancel()
-                            try:
+                            with suppress(asyncio.CancelledError):
                                 await self._inflight
-                            except asyncio.CancelledError:
-                                pass
                         else:
                             return
 
@@ -234,13 +201,7 @@ class TestRefreshRaceCondition:
         fixed_logic = FixedRefreshLogic()
 
         # Simulate concurrent calls
-        tasks = []
-        for _ in range(5):
-            task = asyncio.create_task(fixed_logic.schedule_refresh_fixed())
-            tasks.append(task)
-
-        # Wait for all scheduling attempts
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*(asyncio.create_task(fixed_logic.schedule_refresh_fixed()) for _ in range(5)))
 
         # Only one task should be in flight
         assert fixed_logic._inflight is not None

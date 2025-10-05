@@ -74,29 +74,31 @@ class TestBug4RefSymbolFetch:
         This is the core test validating the fix. Before the fix, "SPY" would
         always be fetched. After the fix, it's only fetched if requested.
         """
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch:
-                # Request symbols that DO NOT include the ref symbol "SPY"
-                result = fetcher.features_for_symbols(["AAPL", "MSFT", "GOOGL"])
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch,
+        ):
+            # Request symbols that DO NOT include the ref symbol "SPY"
+            result = fetcher.features_for_symbols(["AAPL", "MSFT", "GOOGL"])
 
-                # Verify the results contain the requested symbols
-                assert set(result.keys()) == {"AAPL", "MSFT", "GOOGL"}
+            # Verify the results contain the requested symbols
+            assert set(result.keys()) == {"AAPL", "MSFT", "GOOGL"}
 
-                # CRITICAL ASSERTION: _fetch_daily should NOT be called for "SPY"
-                # Extract all symbols that were fetched
-                fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
+            # CRITICAL ASSERTION: _fetch_daily should NOT be called for "SPY"
+            # Extract all symbols that were fetched
+            fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
 
-                # Bug #4 fix validation: SPY should NOT be in fetched symbols
-                assert "SPY" not in fetched_symbols, (
-                    "Bug #4 REGRESSION: Reference symbol 'SPY' was fetched even though "
-                    "it was not in the requested symbols list. This wastes a network call."
-                )
+            # Bug #4 fix validation: SPY should NOT be in fetched symbols
+            assert "SPY" not in fetched_symbols, (
+                "Bug #4 REGRESSION: Reference symbol 'SPY' was fetched even though "
+                "it was not in the requested symbols list. This wastes a network call."
+            )
 
-                # Verify only requested symbols were fetched
-                assert set(fetched_symbols) == {"AAPL", "MSFT", "GOOGL"}
+            # Verify only requested symbols were fetched
+            assert set(fetched_symbols) == {"AAPL", "MSFT", "GOOGL"}
 
-                # Verify exactly 3 fetches (not 4 with SPY)
-                assert mock_fetch.call_count == 3
+            # Verify exactly 3 fetches (not 4 with SPY)
+            assert mock_fetch.call_count == 3
 
     def test_ref_symbol_fetched_when_requested(self, fetcher: RealTwsFetcher, mock_app: Mock) -> None:
         """Ref symbol SHOULD be fetched when explicitly requested.
@@ -105,29 +107,31 @@ class TestBug4RefSymbolFetch:
         requested list, it should still be fetched (and fetched first for
         rs_strength calculations).
         """
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch:
-                # Request symbols that DO include the ref symbol "SPY"
-                result = fetcher.features_for_symbols(["AAPL", "SPY", "MSFT"])
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch,
+        ):
+            # Request symbols that DO include the ref symbol "SPY"
+            result = fetcher.features_for_symbols(["AAPL", "SPY", "MSFT"])
 
-                # Verify the results contain all requested symbols
-                assert set(result.keys()) == {"AAPL", "SPY", "MSFT"}
+            # Verify the results contain all requested symbols
+            assert set(result.keys()) == {"AAPL", "SPY", "MSFT"}
 
-                # Extract fetched symbols in order
-                fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
+            # Extract fetched symbols in order
+            fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
 
-                # Verify SPY was fetched
-                assert "SPY" in fetched_symbols
+            # Verify SPY was fetched
+            assert "SPY" in fetched_symbols
 
-                # Verify SPY was fetched FIRST (for rs_strength calculation)
-                assert fetched_symbols[0] == "SPY", (
-                    "Reference symbol should be fetched first when requested "
-                    "to enable rs_strength calculation for other symbols"
-                )
+            # Verify SPY was fetched FIRST (for rs_strength calculation)
+            assert fetched_symbols[0] == "SPY", (
+                "Reference symbol should be fetched first when requested "
+                "to enable rs_strength calculation for other symbols"
+            )
 
-                # Verify all requested symbols were fetched
-                assert set(fetched_symbols) == {"AAPL", "SPY", "MSFT"}
-                assert mock_fetch.call_count == 3
+            # Verify all requested symbols were fetched
+            assert set(fetched_symbols) == {"AAPL", "SPY", "MSFT"}
+            assert mock_fetch.call_count == 3
 
     def test_rs_strength_calculated_when_ref_available(self, fetcher: RealTwsFetcher, mock_app: Mock) -> None:
         """When ref symbol is requested, rs_strength should be calculated correctly.
@@ -157,20 +161,22 @@ class TestBug4RefSymbolFetch:
                 ]
             return []
 
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", side_effect=fetch_daily_mock):
-                result = fetcher.features_for_symbols(["AAPL", "SPY"])
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", side_effect=fetch_daily_mock),
+        ):
+            result = fetcher.features_for_symbols(["AAPL", "SPY"])
 
-                # Verify rs_strength is calculated for AAPL
-                assert "rs_strength" in result["AAPL"]
+            # Verify rs_strength is calculated for AAPL
+            assert "rs_strength" in result["AAPL"]
 
-                # Expected: AAPL 20% return - SPY 10% return = 10% = 0.10
-                expected_rs = 0.10
-                actual_rs = result["AAPL"]["rs_strength"]
+            # Expected: AAPL 20% return - SPY 10% return = 10% = 0.10
+            expected_rs = 0.10
+            actual_rs = result["AAPL"]["rs_strength"]
 
-                assert (
-                    abs(actual_rs - expected_rs) < 0.001
-                ), f"rs_strength calculation incorrect: expected {expected_rs}, got {actual_rs}"
+            assert (
+                abs(actual_rs - expected_rs) < 0.001
+            ), f"rs_strength calculation incorrect: expected {expected_rs}, got {actual_rs}"
 
     def test_rs_strength_equals_absolute_return_when_ref_not_available(
         self, fetcher: RealTwsFetcher, mock_app: Mock
@@ -194,72 +200,81 @@ class TestBug4RefSymbolFetch:
                 ]
             return []
 
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", side_effect=fetch_daily_mock):
-                # Request AAPL without SPY
-                result = fetcher.features_for_symbols(["AAPL"])
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", side_effect=fetch_daily_mock),
+        ):
+            # Request AAPL without SPY
+            result = fetcher.features_for_symbols(["AAPL"])
 
-                # Verify rs_strength exists and equals the symbol's absolute return
-                assert "rs_strength" in result["AAPL"]
+            # Verify rs_strength exists and equals the symbol's absolute return
+            assert "rs_strength" in result["AAPL"]
 
-                # Expected: AAPL 20% return, ref_ret20 = 0.0 (no ref)
-                # rs_strength = 0.20 - 0.0 = 0.20 (absolute return)
-                expected_rs = 0.20
-                actual_rs = result["AAPL"]["rs_strength"]
+            # Expected: AAPL 20% return, ref_ret20 = 0.0 (no ref)
+            # rs_strength = 0.20 - 0.0 = 0.20 (absolute return)
+            expected_rs = 0.20
+            actual_rs = result["AAPL"]["rs_strength"]
 
-                assert abs(actual_rs - expected_rs) < 0.001, (
-                    f"When ref not available, rs_strength should equal absolute return. "
-                    f"Expected {expected_rs}, got {actual_rs}"
-                )
+            assert abs(actual_rs - expected_rs) < 0.001, (
+                f"When ref not available, rs_strength should equal absolute return. "
+                f"Expected {expected_rs}, got {actual_rs}"
+            )
 
     def test_duplicate_symbols_handled_correctly(self, fetcher: RealTwsFetcher, mock_app: Mock) -> None:
         """Duplicate symbols in request should be deduplicated.
 
         This validates that the fix preserves the existing deduplication logic.
         """
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch:
-                # Request with duplicates
-                result = fetcher.features_for_symbols(["AAPL", "MSFT", "AAPL", "MSFT"])
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch,
+        ):
+            # Request with duplicates
+            result = fetcher.features_for_symbols(["AAPL", "MSFT", "AAPL", "MSFT"])
 
-                # Verify results only contain unique symbols
-                assert set(result.keys()) == {"AAPL", "MSFT"}
+            # Verify results only contain unique symbols
+            assert set(result.keys()) == {"AAPL", "MSFT"}
 
-                # Verify each symbol was only fetched once
-                fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
-                assert fetched_symbols.count("AAPL") == 1
-                assert fetched_symbols.count("MSFT") == 1
-                assert mock_fetch.call_count == 2
+            # Verify each symbol was only fetched once
+            fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
+            assert fetched_symbols.count("AAPL") == 1
+            assert fetched_symbols.count("MSFT") == 1
+            assert mock_fetch.call_count == 2
 
     def test_ref_symbol_case_sensitivity(self, fetcher: RealTwsFetcher, mock_app: Mock) -> None:
         """Reference symbol matching should be case-sensitive.
 
         This validates that "SPY" is different from "spy" in symbol matching.
         """
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch:
-                # Request lowercase "spy" (different from ref "SPY")
-                result = fetcher.features_for_symbols(["spy", "AAPL"])
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch,
+        ):
+            # Request lowercase "spy" (different from ref "SPY")
+            result = fetcher.features_for_symbols(["spy", "AAPL"])
 
-                fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
+            fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
 
-                # "SPY" (uppercase ref) should NOT be fetched because "spy" != "SPY"
-                assert "SPY" not in fetched_symbols
-                assert "spy" in fetched_symbols
-                assert "AAPL" in fetched_symbols
+            # "SPY" (uppercase ref) should NOT be fetched because "spy" != "SPY"
+            assert "SPY" not in fetched_symbols
+            assert "spy" in fetched_symbols
+            assert "AAPL" in fetched_symbols
+            assert isinstance(result, dict)
 
     def test_empty_symbols_list(self, fetcher: RealTwsFetcher, mock_app: Mock) -> None:
         """Empty symbols list should not fetch anything, including ref symbol.
 
         This is an edge case that validates the fix handles empty input gracefully.
         """
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch:
-                result = fetcher.features_for_symbols([])
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch,
+        ):
+            result = fetcher.features_for_symbols([])
 
-                # No symbols requested, so no fetches should occur
-                assert mock_fetch.call_count == 0
-                assert result == {}
+            # No symbols requested, so no fetches should occur
+            assert mock_fetch.call_count == 0
+            assert result == {}
 
     def test_performance_improvement_metrics(self, fetcher: RealTwsFetcher, mock_app: Mock) -> None:
         """Validate that the fix reduces network calls in typical usage.
@@ -269,19 +284,21 @@ class TestBug4RefSymbolFetch:
         call_counts_without_ref = 0
         call_counts_with_ref = 0
 
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch:
-                # Scenario 1: Request 10 symbols WITHOUT ref
-                mock_fetch.reset_mock()
-                symbols_without_ref = [f"SYM{i}" for i in range(10)]
-                fetcher.features_for_symbols(symbols_without_ref)
-                call_counts_without_ref = mock_fetch.call_count
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch,
+        ):
+            # Scenario 1: Request 10 symbols WITHOUT ref
+            mock_fetch.reset_mock()
+            symbols_without_ref = [f"SYM{i}" for i in range(10)]
+            fetcher.features_for_symbols(symbols_without_ref)
+            call_counts_without_ref = mock_fetch.call_count
 
-                # Scenario 2: Request 10 symbols WITH ref
-                mock_fetch.reset_mock()
-                symbols_with_ref = ["SPY"] + [f"SYM{i}" for i in range(9)]
-                fetcher.features_for_symbols(symbols_with_ref)
-                call_counts_with_ref = mock_fetch.call_count
+            # Scenario 2: Request 10 symbols WITH ref
+            mock_fetch.reset_mock()
+            symbols_with_ref = ["SPY"] + [f"SYM{i}" for i in range(9)]
+            fetcher.features_for_symbols(symbols_with_ref)
+            call_counts_with_ref = mock_fetch.call_count
 
         # Both scenarios should make the same number of calls (10)
         # Before the fix, scenario 1 would make 11 calls (10 + SPY)
@@ -338,19 +355,21 @@ class TestBug4Integration:
         mock_app.release = Mock()
         mock_app.reqHistoricalData = Mock()
 
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch:
-                result = fetcher.features_for_symbols(biotech_watchlist)
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch,
+        ):
+            result = fetcher.features_for_symbols(biotech_watchlist)
 
-                # Verify all biotech symbols were fetched
-                assert set(result.keys()) == set(biotech_watchlist)
+            # Verify all biotech symbols were fetched
+            assert set(result.keys()) == set(biotech_watchlist)
 
-                # Verify SPY was NOT fetched (saving 1 network call)
-                fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
-                assert "SPY" not in fetched_symbols
+            # Verify SPY was NOT fetched (saving 1 network call)
+            fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
+            assert "SPY" not in fetched_symbols
 
-                # Verify exactly 5 fetches (not 6 with SPY)
-                assert mock_fetch.call_count == len(biotech_watchlist)
+            # Verify exactly 5 fetches (not 6 with SPY)
+            assert mock_fetch.call_count == len(biotech_watchlist)
 
     def test_mixed_watchlist_with_ref_symbol(self, mock_config: TwsConfig) -> None:
         """Realistic scenario: scanning a watchlist that includes SPY.
@@ -383,16 +402,18 @@ class TestBug4Integration:
         mock_app.release = Mock()
         mock_app.reqHistoricalData = Mock()
 
-        with patch.object(fetcher, "_connect", return_value=mock_app):
-            with patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch:
-                result = fetcher.features_for_symbols(mixed_watchlist)
+        with (
+            patch.object(fetcher, "_connect", return_value=mock_app),
+            patch.object(fetcher, "_fetch_daily", wraps=fetcher._fetch_daily) as mock_fetch,
+        ):
+            result = fetcher.features_for_symbols(mixed_watchlist)
 
-                # Verify all symbols were fetched
-                assert set(result.keys()) == set(mixed_watchlist)
+            # Verify all symbols were fetched
+            assert set(result.keys()) == set(mixed_watchlist)
 
-                # Verify SPY was fetched FIRST
-                fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
-                assert fetched_symbols[0] == "SPY"
+            # Verify SPY was fetched FIRST
+            fetched_symbols = [call[0][1] for call in mock_fetch.call_args_list]
+            assert fetched_symbols[0] == "SPY"
 
-                # Verify exactly 5 fetches (same as watchlist size)
-                assert mock_fetch.call_count == len(mixed_watchlist)
+            # Verify exactly 5 fetches (same as watchlist size)
+            assert mock_fetch.call_count == len(mixed_watchlist)

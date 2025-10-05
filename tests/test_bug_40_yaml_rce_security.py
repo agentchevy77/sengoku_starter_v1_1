@@ -304,9 +304,11 @@ class TestBug40YamlRceSecurity(unittest.TestCase):
         ]
 
         for payload in malicious_payloads:
-            with self.subTest(payload=payload[:50]):  # Show first 50 chars in test name
-                with self.assertRaises((yaml.constructor.ConstructorError, yaml.scanner.ScannerError)):
-                    parse_profiles_yaml(payload)
+            with (
+                self.subTest(payload=payload[:50]),
+                self.assertRaises((yaml.constructor.ConstructorError, yaml.scanner.ScannerError)),
+            ):
+                parse_profiles_yaml(payload)
 
 
 if __name__ == "__main__":

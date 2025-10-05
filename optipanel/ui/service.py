@@ -7,6 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from optipanel.acceptance.engine import detect_breakout_acceptance
+from optipanel.battlefield.ascii import render_battlefield
+from optipanel.config.loader import parse_features_yaml, parse_profiles_yaml
+from optipanel.engine.aggregate import build_symbol_snapshot
+from optipanel.recon.enrich import build_recon_entry
+from optipanel.runtime.profiles_live import run_profiles_with_provider
+from optipanel.ui.command_room import render_command_room
+
 
 class ConfigurationFileError(Exception):
     """Raised when a configuration file cannot be read due to I/O errors.
@@ -15,14 +23,6 @@ class ConfigurationFileError(Exception):
     etc.) to provide actionable context for configuration loading failures.
     """
 
-
-from optipanel.acceptance.engine import detect_breakout_acceptance
-from optipanel.battlefield.ascii import render_battlefield
-from optipanel.config.loader import parse_features_yaml, parse_profiles_yaml
-from optipanel.engine.aggregate import build_symbol_snapshot
-from optipanel.recon.enrich import build_recon_entry
-from optipanel.runtime.profiles_live import run_profiles_with_provider
-from optipanel.ui.command_room import render_command_room
 
 try:  # Optional dependency (ibapi) is only required for live provider usage
     from optipanel.adapters.ibkr import RealTwsFetcher, RealTwsFetcherConfig, cfg_from_env
