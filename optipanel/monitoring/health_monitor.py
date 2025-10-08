@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import traceback
@@ -17,7 +18,58 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from contextlib import suppress
+
 logger = logging.getLogger(__name__)
+
+
+_ALERT_LOG_ENV_VAR = "SENGOKU_ALERT_LOG_PATH"
+
+
+def _ensure_private_directory(directory: Path) -> Path:
+    """Create *directory* with restrictive permissions if it does not exist."""
+
+    directory.mkdir(parents=True, exist_ok=True)
+    with suppress(OSError):
+        # chmod isn't reliable on all platforms (e.g., Windows); best effort only
+        directory.chmod(0o700)
+    return directory
+
+
+def _resolve_alert_log_path() -> Path:
+    """Return a secure location for the alert log, favoring user-specific storage."""
+
+    env_path = os.getenv(_ALERT_LOG_ENV_VAR)
+    if env_path:
+        path = Path(env_path).expanduser()
+        _ensure_private_directory(path.parent)
+        return path
+
+    base_state = os.getenv("XDG_STATE_HOME")
+    preferred_base = Path(base_state) if base_state else Path.home() / ".local" / "state"
+
+    try:
+        alerts_dir = _ensure_private_directory(preferred_base / "sengoku")
+        return alerts_dir / "alerts.log"
+    except PermissionError:
+        # Fall back to repository-local state directory when home is not writable
+        fallback_dir = _ensure_private_directory(Path.cwd() / ".sengoku_state")
+        return fallback_dir / "alerts.log"
+
+
+def _open_secure_append(path: Path):
+    """Open *path* for append using O_NOFOLLOW via Path.open's custom opener."""
+
+    base_flags = os.O_APPEND | os.O_WRONLY | os.O_CREAT
+    base_flags |= getattr(os, "O_CLOEXEC", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        base_flags |= os.O_NOFOLLOW
+
+    def _secure_opener(file_path: str, flags: int) -> int:
+        combined_flags = flags | base_flags
+        return os.open(file_path, combined_flags, 0o600)
+
+    return path.open("a", encoding="utf-8", opener=_secure_opener)
 
 
 @dataclass
@@ -130,11 +182,16 @@ class HealthMonitor:
             self.metrics.append(metric)
 
     def _check_alert_threshold(self) -> None:
-        """Check if error rate exceeds threshold and send alert."""
+        """Check if error rate exceeds threshold and send alert.
+
+        FIX for Bug #49: Use >= instead of > to include errors at exact cutoff boundary.
+        Time windows are inclusive: "last N seconds" means [now-N, now].
+        """
         now = time.time()
         cutoff = now - self.alert_window
 
-        recent_errors = sum(1 for e in self.errors if e.timestamp > cutoff)
+        # FIX Bug #49: Changed > to >= to include boundary errors
+        recent_errors = sum(1 for e in self.errors if e.timestamp >= cutoff)
 
         if recent_errors >= self.alert_threshold:
             self.alerts_sent += 1
@@ -153,19 +210,33 @@ class HealthMonitor:
         )
 
         # In production, this would send to PagerDuty, Slack, etc.
-        alert_file = Path("/tmp/sengoku_alerts.log")
+        alert_data = {
+            "timestamp": datetime.now().isoformat(),
+            "type": "high_error_rate",
+            "error_count": error_count,
+            "window_seconds": self.alert_window,
+            "threshold": self.alert_threshold,
+        }
+        alert_line = json.dumps(alert_data) + "\n"
+
+        alert_file = _resolve_alert_log_path()
+
         try:
-            with alert_file.open("a", encoding="utf-8") as f:
-                alert_data = {
-                    "timestamp": datetime.now().isoformat(),
-                    "type": "high_error_rate",
-                    "error_count": error_count,
-                    "window_seconds": self.alert_window,
-                    "threshold": self.alert_threshold,
-                }
-                f.write(json.dumps(alert_data) + "\n")
-        except Exception as e:
-            logger.error(f"Failed to write alert: {e}")
+            with _open_secure_append(alert_file) as f:
+                f.write(alert_line)
+        except FileNotFoundError:
+            # Parent directory was removed after resolution; recreate and retry once.
+            try:
+                _ensure_private_directory(alert_file.parent)
+                with _open_secure_append(alert_file) as f:
+                    f.write(alert_line)
+            except Exception:
+                logger.exception("Failed to write alert to file after recreating directory")
+        except OSError:
+            # Includes potential ELOOP from O_NOFOLLOW when a symlink attack is detected.
+            logger.exception("Failed to write alert to file due to secure-open failure")
+        except Exception:
+            logger.exception("Failed to write alert to file")
 
     def get_health_status(self) -> dict[str, Any]:
         """Get current health status summary.
@@ -179,11 +250,13 @@ class HealthMonitor:
 
             # Calculate error rate
             recent_cutoff = now - 300  # Last 5 minutes
-            recent_errors = sum(1 for e in self.errors if e.timestamp > recent_cutoff)
+            # FIX Bug #49: Changed > to >= to include boundary errors
+            recent_errors = sum(1 for e in self.errors if e.timestamp >= recent_cutoff)
             error_rate = recent_errors / 5.0  # Per minute
 
             # Calculate performance stats
-            recent_metrics = [m for m in self.metrics if m.timestamp > recent_cutoff]
+            # FIX Bug #49: Changed > to >= to include boundary metrics
+            recent_metrics = [m for m in self.metrics if m.timestamp >= recent_cutoff]
             if recent_metrics:
                 avg_duration = sum(m.duration_ms for m in recent_metrics) / len(recent_metrics)
                 success_rate = sum(1 for m in recent_metrics if m.success) / len(recent_metrics) * 100
@@ -234,9 +307,9 @@ class HealthMonitor:
             try:
                 with output_path.open("w", encoding="utf-8") as f:
                     json.dump(export_data, f, indent=2, default=str)
-                logger.info(f"Health data exported to {output_path}")
-            except Exception as e:
-                logger.error(f"Failed to export health data: {e}")
+                logger.info("Health data exported to %s", output_path)
+            except Exception:
+                logger.exception("Failed to export health data")
 
     def _get_performance_summary(self) -> dict[str, Any]:
         """Get performance summary by operation."""

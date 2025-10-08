@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import ipaddress
+import json
 import logging
 import os
+import re
 import threading
 import time
 from collections import OrderedDict, deque
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ibapi.client import EClient
@@ -30,14 +33,125 @@ from ibapi.wrapper import EWrapper
 
 from optipanel.security import SecretResolver
 from optipanel.services.ratelimit import RateLimiter
+from optipanel.utils.safe_error_handler import SafeErrorHandler
 
 logger = logging.getLogger(__name__)
+
+# Initialize safe error handler for TWS operations
+_error_handler = SafeErrorHandler(logger=logger, context="tws_fetcher")
+
+
+_HOST_PATTERN = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(?:\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*$")
+_DEFAULT_TWS_HOST = "127.0.0.1"
+_DEFAULT_TWS_PORT = 7496
+
+
+def _sanitize_host(value: Any, source: str, *, default: str | None = None) -> str:
+    """Validate and sanitize a hostname or IP address string."""
+
+    if value is None:
+        if default is not None:
+            return default
+        raise ValueError(f"{source} is required")
+
+    host = str(value).strip()
+    if not host:
+        if default is not None:
+            return default
+        raise ValueError(f"{source} cannot be empty")
+
+    if len(host) > 253:
+        raise ValueError(f"{source} is too long (max 253 characters)")
+
+    if any(ord(ch) < 32 for ch in host):
+        raise ValueError(f"{source} contains control characters")
+
+    if "//" in host:
+        raise ValueError(f"{source} must not include URL schemes")
+
+    try:
+        ipaddress.ip_address(host)
+        return host
+    except ValueError:
+        pass
+
+    stripped = host[:-1] if host.endswith(".") else host
+    if not _HOST_PATTERN.fullmatch(stripped):
+        raise ValueError(f"{source} must be a valid hostname or IP address")
+
+    return stripped
+
+
+def _sanitize_port(value: Any, source: str, *, default: int | None = None) -> int:
+    """Validate and sanitize a TCP port number."""
+
+    if value is None:
+        if default is not None:
+            return default
+        raise ValueError(f"{source} is required")
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped and default is not None:
+            return default
+        if not re.fullmatch(r"[0-9]+", stripped):
+            raise ValueError(f"{source} must be an integer between 1 and 65535")
+        port = int(stripped, 10)
+    elif isinstance(value, bool):
+        raise ValueError(f"{source} must not be boolean")
+    elif isinstance(value, int):
+        port = value
+    elif isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(f"{source} must be an integer between 1 and 65535")
+        port = int(value)
+    else:
+        raise ValueError(f"{source} must be an integer between 1 and 65535")
+
+    if not 1 <= port <= 65535:
+        raise ValueError(f"{source} must be between 1 and 65535")
+
+    return port
+
+
+def _default_host() -> str:
+    raw = os.getenv("SENGOKU_TWS_HOST")
+    return _sanitize_host(raw, "env:SENGOKU_TWS_HOST", default=_DEFAULT_TWS_HOST)
+
+
+def _default_port() -> int:
+    raw = os.getenv("SENGOKU_TWS_PORT")
+    return _sanitize_port(raw, "env:SENGOKU_TWS_PORT", default=_DEFAULT_TWS_PORT)
+
+
+@dataclass
+class OrderRejectionDetails:
+    """Structured storage for advanced order rejection information.
+
+    Bug #56 FIX: Capture and parse advancedOrderRejectJson from IB API
+    for comprehensive order rejection debugging and monitoring.
+
+    Attributes:
+        request_id: Request ID associated with the rejected order
+        error_code: IB API error code
+        error_message: Human-readable error message
+        timestamp: Unix timestamp when error occurred
+        rejection_data: Parsed JSON data with rejection details
+        raw_json: Original JSON string for reference
+    """
+
+    request_id: int
+    error_code: int
+    error_message: str
+    timestamp: float
+    rejection_data: dict[str, Any] = field(default_factory=dict)
+    raw_json: str = ""
 
 
 @dataclass(frozen=True)
 class TwsConfig:
-    host: str = os.getenv("SENGOKU_TWS_HOST", "127.0.0.1")
-    port: int = int(os.getenv("SENGOKU_TWS_PORT", "7496"))
+    host: str = field(default_factory=_default_host)
+    port: int = field(default_factory=_default_port)
     client_id: int = int(os.getenv("SENGOKU_TWS_CLIENT_ID", "107"))
     ref_symbol: str | None = os.getenv("SENGOKU_TWS_REF", "SPY")
 
@@ -64,12 +178,20 @@ class TwsConfig:
     global_rate_max_requests: int = int(os.getenv("SENGOKU_TWS_GLOBAL_MAX_REQS", "120"))
     global_rate_interval_sec: float = float(os.getenv("SENGOKU_TWS_GLOBAL_INTERVAL", "60.0"))
 
+    def __post_init__(self) -> None:
+        host = _sanitize_host(self.host, "TwsConfig.host", default=_DEFAULT_TWS_HOST)
+        port = _sanitize_port(self.port, "TwsConfig.port", default=_DEFAULT_TWS_PORT)
+        object.__setattr__(self, "host", host)
+        object.__setattr__(self, "port", port)
+
 
 def cfg_from_env(resolver: SecretResolver | None = None) -> TwsConfig:
     resolver = resolver or SecretResolver.from_environment()
+    host_raw = resolver.get_str("SENGOKU_TWS_HOST", default=_DEFAULT_TWS_HOST)
+    port_raw = resolver.resolve("SENGOKU_TWS_PORT", default=_DEFAULT_TWS_PORT, cast=str)
     return TwsConfig(
-        host=resolver.get_str("SENGOKU_TWS_HOST", default="127.0.0.1") or "127.0.0.1",
-        port=resolver.get_int("SENGOKU_TWS_PORT", default=7496) or 7496,
+        host=_sanitize_host(host_raw, "resolver:SENGOKU_TWS_HOST", default=_DEFAULT_TWS_HOST),
+        port=_sanitize_port(port_raw, "resolver:SENGOKU_TWS_PORT", default=_DEFAULT_TWS_PORT),
         client_id=resolver.get_int("SENGOKU_TWS_CLIENT_ID", default=107) or 107,
         ref_symbol=resolver.get_str("SENGOKU_TWS_REF", default="SPY"),
         handshake_timeout=resolver.get_float("SENGOKU_TWS_HANDSHAKE", default=7.0) or 7.0,
@@ -161,58 +283,174 @@ class _BaseApp(EWrapper, EClient):
     # Bug #1 FIX: Bounded error accumulation to prevent memory leak
     _MAX_ERRORS = int(os.getenv("SENGOKU_TWS_MAX_ERRORS", "100"))
 
+    # Bug #56 FIX: Storage for advanced order rejection details
+    _MAX_REJECTIONS = int(os.getenv("SENGOKU_TWS_MAX_REJECTIONS", "50"))
+
     def __init__(self):
         EClient.__init__(self, self)
         self.ready = threading.Event()
         # Bug #1 FIX: Use deque with maxlen to automatically evict oldest errors
         # This prevents unbounded memory growth in long-running processes
         self.errors: deque[tuple[int, str]] = deque(maxlen=self._MAX_ERRORS)
+        # Bug #56 FIX: Bounded storage for order rejection details
+        self.rejection_details: deque[OrderRejectionDetails] = deque(maxlen=self._MAX_REJECTIONS)
 
-    def error(self, reqId: int, errorTime: int, errorCode: int, errorString: str, advancedOrderRejectJson=""):
+    def error(self, reqId: int, *args, **kwargs):
         """Handle errors from TWS API.
 
-        Updated for ibapi 10.37.2+ which added errorTime parameter.
+        Supports both legacy and modern ibapi error signatures.
         Bug #43 FIX: Enhanced error classification and handling.
+        Bug #56 FIX: Parse and store advancedOrderRejectJson for comprehensive debugging.
 
         Args:
             reqId: Request ID that caused the error
-            errorTime: Timestamp of error from TWS (epoch seconds)
-            errorCode: TWS error code
-            errorString: Human-readable error message
-            advancedOrderRejectJson: Optional JSON with advanced order rejection details
+            *args: Positional arguments supplied by ibapi (varies by version)
+            **kwargs: Optional keyword args supplied by ibapi
         """
         import logging
         from contextlib import suppress
 
         logger = logging.getLogger(__name__)
 
+        error_time: float
+        error_code: int
+        error_string: str
+        advanced_order_reject_json: str
+
+        if len(args) == 4:
+            # ibapi >= 10.19 adds errorTime ahead of errorCode
+            error_time, error_code, error_string, advanced_order_reject_json = args
+        elif len(args) == 3:
+            # Legacy form: errorCode, errorString, advanced JSON
+            error_code, error_string, advanced_order_reject_json = args
+            error_time = kwargs.pop("errorTime", time.time())
+        elif len(args) == 2:
+            # Very old form: only errorCode and errorString
+            error_code, error_string = args
+            advanced_order_reject_json = kwargs.pop("advancedOrderRejectJson", "")
+            error_time = kwargs.pop("errorTime", time.time())
+        elif not args and {"errorCode", "errorString"}.issubset(kwargs.keys()):
+            # Some ibapi builds (and certain mocks/tests) invoke the callback exclusively
+            # with keyword arguments.  Accept that signature to preserve backwards
+            # compatibility and to keep defensive coverage intact.
+            error_code = kwargs.pop("errorCode")
+            error_string = kwargs.pop("errorString")
+            advanced_order_reject_json = kwargs.pop("advancedOrderRejectJson", "")
+            error_time = kwargs.pop("errorTime", time.time())
+        else:
+            logger.error(
+                "Unexpected TWS error signature: reqId=%s args=%r kwargs=%r",
+                reqId,
+                args,
+                kwargs,
+            )
+            return
+
         # Determine error classification
-        error_level = self._ERROR_CLASSIFICATIONS.get(errorCode, "error")
+        error_level = self._ERROR_CLASSIFICATIONS.get(error_code, "error")
 
         # Record metric
         with suppress(Exception):
-            record(f"ibkr.error.{errorCode}")
+            record(f"ibkr.error.{error_code}")
             record(f"ibkr.error_level.{error_level}")
 
-        # Enhanced logging with classification
-        log_msg = f"TWS Error [{error_level.upper()}] Code={errorCode}, ReqId={reqId}: {errorString}"
+        # Bug #58 FIX: Use %-formatting for lazy evaluation (logging standards)
+        log_msg = "TWS Error [%s] Code=%d, ReqId=%d: %s"
 
         if error_level == "info":
-            logger.info(log_msg)
+            logger.info(log_msg, error_level.upper(), error_code, reqId, error_string)
         elif error_level == "warning":
-            logger.warning(log_msg)
+            logger.warning(log_msg, error_level.upper(), error_code, reqId, error_string)
         elif error_level == "critical":
-            logger.critical(log_msg)
+            logger.critical(log_msg, error_level.upper(), error_code, reqId, error_string)
         else:  # error
-            logger.error(log_msg)
+            logger.error(log_msg, error_level.upper(), error_code, reqId, error_string)
 
-        # Handle advanced order rejection JSON if present
-        if advancedOrderRejectJson and advancedOrderRejectJson.strip():
-            logger.error(f"Order rejection details: {advancedOrderRejectJson}")
+        # Bug #56 FIX: Parse and store advanced order rejection JSON
+        if advanced_order_reject_json and advanced_order_reject_json.strip():
+            rejection_data = self._parse_rejection_json(advanced_order_reject_json)
+
+            # Create structured rejection record
+            rejection = OrderRejectionDetails(
+                request_id=reqId,
+                error_code=error_code,
+                error_message=str(error_string),
+                timestamp=error_time if error_time else time.time(),
+                rejection_data=rejection_data,
+                raw_json=advanced_order_reject_json,
+            )
+
+            # Store for later retrieval
+            self.rejection_details.append(rejection)
+
+            # Log structured rejection data with proper formatting
+            if rejection_data:
+                # Extract key fields for logging
+                reason = rejection_data.get("reason", "unknown")
+                order_id = rejection_data.get("orderId", "N/A")
+                logger.error(
+                    "Order rejection: reqId=%d, orderId=%s, reason=%s, details=%s",
+                    reqId,
+                    order_id,
+                    reason,
+                    rejection_data,
+                )
+            else:
+                # Fallback if parsing failed
+                logger.error("Order rejection (unparsed): reqId=%d, json=%s", reqId, advanced_order_reject_json)
 
         # Only append fatal errors to the errors list
         if error_level in ("error", "critical"):
-            self.errors.append((errorCode, str(errorString)))
+            self.errors.append((error_code, str(error_string)))
+
+    def _parse_rejection_json(self, json_str: str) -> dict[str, Any]:
+        """Parse advanced order rejection JSON safely.
+
+        Bug #56 FIX: Safe JSON parsing with error handling.
+
+        Args:
+            json_str: JSON string from IB API
+
+        Returns:
+            Parsed dictionary or empty dict on failure
+        """
+        if not json_str or not json_str.strip():
+            return {}
+
+        try:
+            data = json.loads(json_str)
+            if isinstance(data, dict):
+                return data
+            else:
+                # JSON parsed but not a dict (unusual)
+                _error_handler.safe_exception("Rejection JSON parsed to non-dict type: %s", type(data).__name__)
+                return {"raw_value": data}
+        except json.JSONDecodeError as e:
+            # Log parse failure but don't crash
+            _error_handler.safe_exception(
+                "Failed to parse rejection JSON: %s (error: %s)", json_str[:200], str(e)  # Truncate for safety
+            )
+            return {}
+        except Exception:
+            # Unexpected error during parsing
+            _error_handler.safe_exception("Unexpected error parsing rejection JSON")
+            return {}
+
+    def get_rejection_details(self, request_id: int | None = None) -> list[OrderRejectionDetails]:
+        """Retrieve stored order rejection details.
+
+        Bug #56 FIX: Public API to access advanced rejection information.
+
+        Args:
+            request_id: Optional filter by request ID (None returns all)
+
+        Returns:
+            List of OrderRejectionDetails matching the filter
+        """
+        if request_id is None:
+            return list(self.rejection_details)
+        else:
+            return [r for r in self.rejection_details if r.request_id == request_id]
 
     def nextValidId(self, orderId):
         self.ready.set()
@@ -557,14 +795,9 @@ class RealTwsFetcher:
         syms = list(dict.fromkeys(symbols))
         ref = (self.cfg.ref_symbol or os.getenv("SENGOKU_TWS_REF", "SPY")) or "SPY"
 
-        # Bug #4 FIX: Only fetch reference symbol if it's in the requested symbols list
-        # This prevents wasting a network call when ref data isn't needed
-        if ref in syms:
-            # Reference symbol is requested, fetch it first
-            all_syms = [ref] + [s for s in syms if s != ref]
-        else:
-            # Reference symbol not requested, only fetch requested symbols
-            all_syms = list(syms)
+        # Bug #4 FIX: Only fetch the reference symbol when explicitly requested. When present,
+        # fetch it first so downstream consumers still receive the expected ordering.
+        all_syms = [ref] + [s for s in syms if s != ref] if ref in syms else syms
 
         app = self._connect()
         try:
@@ -637,7 +870,10 @@ class RealTwsFetcher:
                 }
                 out[s] = dict(base_features)
                 out[s]["bundles"] = {"1d": dict(base_features)}
-            return out
+
+            # Filter results so only explicitly requested symbols are returned to the caller.
+            # Reference symbol data remains cached internally but is not exposed unless requested.
+            return {symbol: out[symbol] for symbol in syms if symbol in out}
         finally:
             app.cleanup()
 

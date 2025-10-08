@@ -309,6 +309,8 @@ class PerformanceMonitor:
         request_rate = n / bucket_duration if bucket_duration >= TIME_EPSILON else 0.0
 
         # Create historical stats record
+        p95_index = int((n - 1) * 0.95) if n > 1 else 0  # FIX Bug #103
+        p95_index = max(0, min(p95_index, n - 1))
         historical_stats = HistoricalStats(
             timestamp=bucket_start,
             duration_sec=int(bucket_duration),
@@ -317,7 +319,7 @@ class PerformanceMonitor:
             latency_min=sorted_lat[0],
             latency_max=sorted_lat[-1],
             latency_p50=sorted_lat[n // 2],
-            latency_p95=sorted_lat[int(n * 0.95)] if n > 1 else sorted_lat[0],
+            latency_p95=sorted_lat[p95_index],
             request_rate=request_rate,
             error_count=0,  # Error counts are tracked separately in error_history
             error_rate=0.0,
@@ -473,7 +475,7 @@ class PerformanceMonitor:
 
         # Calculate rate: count / time_span
         # Use actual time span between first and last sample for accuracy
-        time_span = now - recent[0]
+        time_span = recent[-1] - recent[0]
 
         # Prevent unrealistic rates from sub-millisecond time spans
         # If all requests happened within 1ms, return 0 (too fast to be real)
@@ -493,12 +495,14 @@ class PerformanceMonitor:
         sorted_lat = sorted(samples)
         n = len(sorted_lat)
 
+        p95_index = int((n - 1) * 0.95) if n > 1 else 0  # FIX Bug #103
+        p95_index = max(0, min(p95_index, n - 1))
         return {
             "avg": sum(samples) / n,
             "min": sorted_lat[0],
             "max": sorted_lat[-1],
             "p50": sorted_lat[n // 2],
-            "p95": sorted_lat[int(n * 0.95)] if n > 1 else sorted_lat[0],
+            "p95": sorted_lat[p95_index],
         }
 
     def get_memory_usage_mb(self) -> float:
