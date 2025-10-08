@@ -1,12 +1,11 @@
 """Comprehensive regression coverage for Bug #57: tick cache configuration.
 
-This suite exercises the new ``TickCacheSettings`` surface while ensuring the legacy
-``CacheConfig`` shim stays functional until all regressions migrate. The tests validate:
+This suite exercises the ``TickCacheSettings`` surface end-to-end now that the legacy
+``CacheConfig`` shim has been removed. The tests validate:
 
 1. Default values and validation semantics on the modern settings object
 2. Environment-variable resolution via ``ConfigResolver`` (parity with historical shim)
 3. Integration of the settings with ``_TickCache`` (prune cadence, cooldowns, timeouts)
-4. Backward compatibility when the deprecated ``CacheConfig`` is used
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
-from optipanel.api.app import CacheConfig, TickCacheSettings, _TickCache
+from optipanel.api.app import TickCacheSettings, _TickCache
 from optipanel.cli.config import ConfigResolver
 
 
@@ -200,32 +199,9 @@ class TestTickCacheIntegration:
         t2.join(timeout=2.0)
 
 
-class TestLegacyCacheConfigCompatibility:
-    """Keep the shim honest until downstream suites migrate."""
-
-    def test_cache_config_from_env_still_works(self) -> None:
-        with patch.dict(os.environ, {"SENGOKU_CACHE_WAIT_TIMEOUT": "75"}):
-            config = CacheConfig.from_env()
-        assert config.wait_timeout == pytest.approx(75.0)
-
-    def test_tick_cache_accepts_cache_config_with_warning(self) -> None:
-        config = CacheConfig(prune_interval=90.0, failure_cooldown=6.0, wait_timeout=33.0)
-        with pytest.warns(DeprecationWarning):
-            cache = _TickCache(config=config)
-        assert cache._prune_interval == pytest.approx(90.0)
-        assert cache._failure_cooldown_sec == pytest.approx(6.0)
-        assert cache._wait_timeout == pytest.approx(33.0)
-
-
 class TestDocumentationParity:
     """Docstrings should guide operators to the correct APIs."""
 
-    def test_tick_cache_settings_docstring_mentions_legacy(self) -> None:
+    def test_tick_cache_settings_docstring_is_present(self) -> None:
         doc = TickCacheSettings.__doc__
         assert doc is not None
-        assert "CacheConfig" in doc
-
-    def test_cache_config_docstring_retained_for_legacy_consumers(self) -> None:
-        doc = CacheConfig.__doc__
-        assert doc is not None
-        assert "Legacy cache tuning options" in doc

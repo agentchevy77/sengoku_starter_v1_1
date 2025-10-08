@@ -4,7 +4,7 @@ The following temporary shims were added to keep historical regression suites
 passing after the recent refactors. Each item below should receive a dedicated
 tech-debt ticket so we can migrate tests to the new APIs and delete the shim.
 
-1. `optipanel.api.app.CacheConfig` – migrate cache tests to `TickCacheSettings` / modern cache wiring.
+1. `optipanel.api.app.CacheConfig` – **Resolved 2025-10-08** (shim removed; `TickCacheSettings` is the canonical API).
 2. `optipanel.battlefield.units_v2._safe_percentage_change` – update battlefield tests to use decimal helpers.
 3. `optipanel.setups.engine._clamp_unit` / `_safe_ratio` – transition setup tests to direct Decimal logic.
 4. `optipanel.utils.constants` – replace epsilon imports with `optipanel.utils.decimal_types`.
@@ -17,7 +17,7 @@ and update this list.
 
 ## Ticket Tracking
 
-- `optipanel.api.app.CacheConfig` – Ticket: in progress (tests now target `TickCacheSettings`; shim remains for legacy suites).
+- `optipanel.api.app.CacheConfig` – Ticket: done (shim deleted; monitor for regressions and ensure new work sticks with `TickCacheSettings`).
 - `optipanel.battlefield.units_v2._safe_percentage_change` – Ticket: pending (decimal helper rollout).
 - `optipanel.setups.engine._clamp_unit` / `_safe_ratio` – Ticket: pending (Decimal conversion of setups tests).
 - `optipanel.utils.constants` – Ticket: pending (replace epsilon imports with decimal types).
@@ -61,3 +61,4 @@ and update this list.
 2. Create backlog tickets mirroring each shim item in this document.
 3. Migrate one suite at a time to the modern APIs; delete the corresponding shim and
    update this tracker when done.
+4. For cache compatibility, confirm new contributions rely on `TickCacheSettings`; escalate any reintroductions of the old shim.

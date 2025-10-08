@@ -6,7 +6,6 @@ import copy
 import logging
 import os
 import time
-import warnings
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass
@@ -62,11 +61,7 @@ class _TickCacheEntry:
 
 @dataclass
 class TickCacheSettings:
-    """Cache tuning options for `_TickCache`.
-
-    This is the preferred configuration surface going forward. It mirrors the historical
-    ``CacheConfig`` values while dropping the legacy semantics around environment lookups.
-    """
+    """Cache tuning options for `_TickCache`."""
 
     prune_interval: float = 60.0
     failure_cooldown: float = 5.0
@@ -114,76 +109,6 @@ class TickCacheSettings:
         )
         return cls(prune_interval=prune, failure_cooldown=cooldown, wait_timeout=wait_timeout)
 
-    @classmethod
-    def from_legacy(cls, config: CacheConfig) -> TickCacheSettings:
-        """Convert a legacy CacheConfig into TickCacheSettings."""
-        return cls(
-            prune_interval=config.prune_interval,
-            failure_cooldown=config.failure_cooldown,
-            wait_timeout=config.wait_timeout,
-        )
-
-
-@dataclass
-class CacheConfig:
-    """Legacy cache tuning options for `_TickCache` (Bug #57 compatibility).
-
-    This shim exists so regression suites targeting Bug #57 can continue to import the
-    historical configuration object. New code should prefer modern injection patterns
-    and avoid depending on this dataclass directly.
-
-    Environment Variables:
-        - ``SENGOKU_CACHE_PRUNE_INTERVAL`` (float seconds)
-        - ``SENGOKU_CACHE_FAILURE_COOLDOWN`` (float seconds)
-        - ``SENGOKU_CACHE_WAIT_TIMEOUT`` (float seconds)
-    """
-
-    prune_interval: float = 60.0
-    failure_cooldown: float = 5.0
-    wait_timeout: float = 30.0
-
-    def __post_init__(self) -> None:
-        warnings.warn(
-            "CacheConfig is deprecated and retained for legacy tests only.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.prune_interval = float(self.prune_interval)
-        self.failure_cooldown = float(self.failure_cooldown)
-        self.wait_timeout = float(self.wait_timeout)
-
-        if self.prune_interval < 0:
-            raise ValueError("prune_interval must be >= 0")
-        if self.failure_cooldown < 0:
-            raise ValueError("failure_cooldown must be >= 0")
-        if self.wait_timeout < 0:
-            raise ValueError("wait_timeout must be >= 0")
-
-        if self.prune_interval and self.prune_interval < 1.0:
-            display = f"{self.prune_interval:g}"
-            logger.warning("CacheConfig: prune_interval=%ss is very low", display)
-        if self.wait_timeout > 300.0:
-            logger.warning("CacheConfig: wait_timeout=%.1fs is very high", self.wait_timeout)
-
-    @classmethod
-    def from_env(cls, resolver: ConfigResolver | None = None) -> CacheConfig:
-        """Create a CacheConfig instance using environment variables.
-
-        Reads ``SENGOKU_CACHE_PRUNE_INTERVAL``, ``SENGOKU_CACHE_FAILURE_COOLDOWN`` and
-        ``SENGOKU_CACHE_WAIT_TIMEOUT`` to mirror the historical configuration contract.
-        """
-        warnings.warn(
-            "CacheConfig.from_env is deprecated; migrate to AppConfig or direct injection.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        settings = TickCacheSettings.from_env(resolver=resolver)
-        return cls(
-            prune_interval=settings.prune_interval,
-            failure_cooldown=settings.failure_cooldown,
-            wait_timeout=settings.wait_timeout,
-        )
-
 
 class _TickCache:
     """Simple in-memory cache so concurrent API calls reuse the latest tick."""
@@ -192,22 +117,8 @@ class _TickCache:
         self,
         *,
         settings: TickCacheSettings | None = None,
-        config: CacheConfig | None = None,
     ) -> None:
-        if settings is not None and config is not None:
-            raise ValueError("Provide either settings or config, not both.")
-        if settings is not None:
-            self._settings = settings
-        elif config is not None:
-            warnings.warn(
-                "_TickCache(config=CacheConfig(...)) is deprecated; pass TickCacheSettings instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            self._settings = TickCacheSettings.from_legacy(config)
-        else:
-            self._settings = TickCacheSettings.from_env()
-
+        self._settings = settings or TickCacheSettings.from_env()
         self._config = self._settings
         self._data: dict[tuple[Any, ...], _TickCacheEntry] = {}
         self._lock = RLock()

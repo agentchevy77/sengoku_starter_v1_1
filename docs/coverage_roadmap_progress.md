@@ -40,7 +40,7 @@ and aggregation pipeline so we can resume the effort seamlessly next session.
 - **Backfill regression coverage:** Add integration tests (or contract tests)
   around the API layer that consumes `build_symbol_snapshot` to ensure
   `ValidatedFeatureBundle` enforcement does not regress external consumers.
-- **Shim repayment sequencing:** Migrate cache regression suites off the `CacheConfig` shim (first milestone: `tests/test_bug_57_cache_settings.py` now targets `TickCacheSettings`; remove shim once downstream consumers migrate).
+- **Shim repayment sequencing:** Cache shim removed (`CacheConfig` deleted; `TickCacheSettings` is the sole API). Continue retiring remaining legacy helpers per `docs/legacy_shim_debt.md`.
 
 ## Suggested Starting Point When Resuming
 

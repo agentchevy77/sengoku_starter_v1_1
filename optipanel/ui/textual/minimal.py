@@ -29,8 +29,8 @@ class UIConfig:
     FIX for Bug #52: Hardcoded UI Timeout Configuration
 
     This class eliminates hardcoded magic numbers in the UI system by providing
-    environment variable configuration. It follows the same pattern as CacheConfig
-    (Bug #57 fix) for consistency.
+    environment variable configuration. It follows the same pattern as the cache
+    settings (`TickCacheSettings`, Bug #57 fix) for consistency.
 
     Environment Variables:
         SENGOKU_UI_REFRESH_TIMEOUT: Timeout for refresh operations (default: 30.0)
