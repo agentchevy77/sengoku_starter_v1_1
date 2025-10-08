@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import copy
+import logging
 import os
 import time
+import warnings
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass
@@ -15,6 +17,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 
+from optipanel.cli.config import ConfigResolver
 from optipanel.ui.service import (
     DEFAULT_FEATURES_PATH,
     DEFAULT_PROFILES_PATH,
@@ -29,6 +32,7 @@ from optipanel.ui.service import (
 )
 
 app = FastAPI(title="Sengoku Decision Cockpit API", version="0.7.0")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -56,19 +60,165 @@ class _TickCacheEntry:
     payload: dict[str, Any]
 
 
+@dataclass
+class TickCacheSettings:
+    """Cache tuning options for `_TickCache`.
+
+    This is the preferred configuration surface going forward. It mirrors the historical
+    ``CacheConfig`` values while dropping the legacy semantics around environment lookups.
+    """
+
+    prune_interval: float = 60.0
+    failure_cooldown: float = 5.0
+    wait_timeout: float = 30.0
+
+    def __post_init__(self) -> None:
+        self.prune_interval = float(self.prune_interval)
+        self.failure_cooldown = float(self.failure_cooldown)
+        self.wait_timeout = float(self.wait_timeout)
+
+        if self.prune_interval < 0:
+            raise ValueError("prune_interval must be >= 0")
+        if self.failure_cooldown < 0:
+            raise ValueError("failure_cooldown must be >= 0")
+        if self.wait_timeout < 0:
+            raise ValueError("wait_timeout must be >= 0")
+
+        if self.prune_interval and self.prune_interval < 1.0:
+            display = f"{self.prune_interval:g}"
+            logger.warning("TickCacheSettings: prune_interval=%ss is very low", display)
+        if self.wait_timeout > 300.0:
+            logger.warning("TickCacheSettings: wait_timeout=%.1fs is very high", self.wait_timeout)
+
+    @classmethod
+    def from_env(cls, resolver: ConfigResolver | None = None) -> TickCacheSettings:
+        """Create settings using environment configuration."""
+        resolver = resolver or ConfigResolver()
+        prune = resolver.get_float(
+            "cache.prune_interval",
+            cli_value=None,
+            env_key="SENGOKU_CACHE_PRUNE_INTERVAL",
+            default=cls.prune_interval,
+        )
+        cooldown = resolver.get_float(
+            "cache.failure_cooldown",
+            cli_value=None,
+            env_key="SENGOKU_CACHE_FAILURE_COOLDOWN",
+            default=cls.failure_cooldown,
+        )
+        wait_timeout = resolver.get_float(
+            "cache.wait_timeout",
+            cli_value=None,
+            env_key="SENGOKU_CACHE_WAIT_TIMEOUT",
+            default=cls.wait_timeout,
+        )
+        return cls(prune_interval=prune, failure_cooldown=cooldown, wait_timeout=wait_timeout)
+
+    @classmethod
+    def from_legacy(cls, config: CacheConfig) -> TickCacheSettings:
+        """Convert a legacy CacheConfig into TickCacheSettings."""
+        return cls(
+            prune_interval=config.prune_interval,
+            failure_cooldown=config.failure_cooldown,
+            wait_timeout=config.wait_timeout,
+        )
+
+
+@dataclass
+class CacheConfig:
+    """Legacy cache tuning options for `_TickCache` (Bug #57 compatibility).
+
+    This shim exists so regression suites targeting Bug #57 can continue to import the
+    historical configuration object. New code should prefer modern injection patterns
+    and avoid depending on this dataclass directly.
+
+    Environment Variables:
+        - ``SENGOKU_CACHE_PRUNE_INTERVAL`` (float seconds)
+        - ``SENGOKU_CACHE_FAILURE_COOLDOWN`` (float seconds)
+        - ``SENGOKU_CACHE_WAIT_TIMEOUT`` (float seconds)
+    """
+
+    prune_interval: float = 60.0
+    failure_cooldown: float = 5.0
+    wait_timeout: float = 30.0
+
+    def __post_init__(self) -> None:
+        warnings.warn(
+            "CacheConfig is deprecated and retained for legacy tests only.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.prune_interval = float(self.prune_interval)
+        self.failure_cooldown = float(self.failure_cooldown)
+        self.wait_timeout = float(self.wait_timeout)
+
+        if self.prune_interval < 0:
+            raise ValueError("prune_interval must be >= 0")
+        if self.failure_cooldown < 0:
+            raise ValueError("failure_cooldown must be >= 0")
+        if self.wait_timeout < 0:
+            raise ValueError("wait_timeout must be >= 0")
+
+        if self.prune_interval and self.prune_interval < 1.0:
+            display = f"{self.prune_interval:g}"
+            logger.warning("CacheConfig: prune_interval=%ss is very low", display)
+        if self.wait_timeout > 300.0:
+            logger.warning("CacheConfig: wait_timeout=%.1fs is very high", self.wait_timeout)
+
+    @classmethod
+    def from_env(cls, resolver: ConfigResolver | None = None) -> CacheConfig:
+        """Create a CacheConfig instance using environment variables.
+
+        Reads ``SENGOKU_CACHE_PRUNE_INTERVAL``, ``SENGOKU_CACHE_FAILURE_COOLDOWN`` and
+        ``SENGOKU_CACHE_WAIT_TIMEOUT`` to mirror the historical configuration contract.
+        """
+        warnings.warn(
+            "CacheConfig.from_env is deprecated; migrate to AppConfig or direct injection.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        settings = TickCacheSettings.from_env(resolver=resolver)
+        return cls(
+            prune_interval=settings.prune_interval,
+            failure_cooldown=settings.failure_cooldown,
+            wait_timeout=settings.wait_timeout,
+        )
+
+
 class _TickCache:
     """Simple in-memory cache so concurrent API calls reuse the latest tick."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        settings: TickCacheSettings | None = None,
+        config: CacheConfig | None = None,
+    ) -> None:
+        if settings is not None and config is not None:
+            raise ValueError("Provide either settings or config, not both.")
+        if settings is not None:
+            self._settings = settings
+        elif config is not None:
+            warnings.warn(
+                "_TickCache(config=CacheConfig(...)) is deprecated; pass TickCacheSettings instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self._settings = TickCacheSettings.from_legacy(config)
+        else:
+            self._settings = TickCacheSettings.from_env()
+
+        self._config = self._settings
         self._data: dict[tuple[Any, ...], _TickCacheEntry] = {}
         self._lock = RLock()
         self._inflight: dict[tuple[Any, ...], Event] = {}
         self._last_prune = 0.0
-        self._prune_interval = 60.0  # Prune at most once per minute
+        self._prune_interval = max(0.0, float(self._settings.prune_interval))
         # Bug #7 fix: Track loader failures to prevent thundering herd
         # Maps key -> timestamp when retry is allowed
         self._failure_cooldowns: dict[tuple[Any, ...], float] = {}
-        self._failure_cooldown_sec = 5.0  # Wait 5 seconds before retry after failure
+        self._failure_cooldown_sec = max(0.0, float(self._settings.failure_cooldown))
+        self._wait_timeout = max(0.0, float(self._settings.wait_timeout))
 
     def _prune_expired(self, now: float) -> None:
         """Prune expired entries efficiently and thread-safely.
@@ -139,16 +289,19 @@ class _TickCache:
 
             # Another thread is populating this key; wait for it with timeout
             # If timeout expires, we'll retry the loop and either find data or become the loader
-            if not waiter.wait(timeout=30.0):
+            wait_timeout = self._wait_timeout if self._wait_timeout > 0 else 30.0
+            if not waiter.wait(timeout=wait_timeout):
                 # Remove stale waiter to prevent zombie events
                 with self._lock:
                     current_waiter = self._inflight.get(key)
                     if current_waiter is waiter:
                         self._inflight.pop(key, None)
                 # Log warning and continue loop to retry
-                import logging
-
-                logging.warning(f"Cache wait timeout for key {key[:2] if key else 'unknown'}...")
+                logger.warning(
+                    "Cache wait timeout for key %s (timeout %.2fs)",
+                    key[:2] if key else "unknown",
+                    wait_timeout,
+                )
 
         try:
             payload = loader()

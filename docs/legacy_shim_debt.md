@@ -4,7 +4,7 @@ The following temporary shims were added to keep historical regression suites
 passing after the recent refactors. Each item below should receive a dedicated
 tech-debt ticket so we can migrate tests to the new APIs and delete the shim.
 
-1. `optipanel.api.app.CacheConfig` – migrate cache tests to `AppConfig` / modern cache wiring.
+1. `optipanel.api.app.CacheConfig` – migrate cache tests to `TickCacheSettings` / modern cache wiring.
 2. `optipanel.battlefield.units_v2._safe_percentage_change` – update battlefield tests to use decimal helpers.
 3. `optipanel.setups.engine._clamp_unit` / `_safe_ratio` – transition setup tests to direct Decimal logic.
 4. `optipanel.utils.constants` – replace epsilon imports with `optipanel.utils.decimal_types`.
@@ -17,7 +17,7 @@ and update this list.
 
 ## Ticket Tracking
 
-- `optipanel.api.app.CacheConfig` – Ticket: pending (create backlog entry for cache migration).
+- `optipanel.api.app.CacheConfig` – Ticket: in progress (tests now target `TickCacheSettings`; shim remains for legacy suites).
 - `optipanel.battlefield.units_v2._safe_percentage_change` – Ticket: pending (decimal helper rollout).
 - `optipanel.setups.engine._clamp_unit` / `_safe_ratio` – Ticket: pending (Decimal conversion of setups tests).
 - `optipanel.utils.constants` – Ticket: pending (replace epsilon imports with decimal types).
@@ -26,7 +26,7 @@ and update this list.
 
 ## Current Session Status (2025-xx-xx)
 
-- Focused regression suites (`tests/test_bug_57_cache_config.py`, `tests/test_setups_engine_unit.py`,
+- Focused regression suites (`tests/test_bug_57_cache_settings.py`, `tests/test_setups_engine_unit.py`,
   `tests/test_bug_53_error_sanitization.py`) now pass once run without the global
   coverage gate. They still fail under the repository-wide `--cov-fail-under=61`
   setting because the full codebase isn’t exercised in these targeted runs.
@@ -47,7 +47,7 @@ and update this list.
 2. Run focused suites with coverage disabled (global gate otherwise fails):
 
    ```bash
-   PYTEST_ADDOPTS="--no-cov --cov-fail-under=0" .venv/bin/pytest tests/test_bug_57_cache_config.py -vv
+   PYTEST_ADDOPTS="--no-cov --cov-fail-under=0" .venv/bin/pytest tests/test_bug_57_cache_settings.py -vv
    PYTEST_ADDOPTS="--no-cov --cov-fail-under=0" .venv/bin/pytest tests/test_setups_engine_unit.py -vv
    PYTEST_ADDOPTS="--no-cov --cov-fail-under=0" .venv/bin/pytest tests/test_bug_53_error_sanitization.py -vv
    ```

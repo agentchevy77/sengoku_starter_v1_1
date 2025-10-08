@@ -40,7 +40,7 @@ and aggregation pipeline so we can resume the effort seamlessly next session.
 - **Backfill regression coverage:** Add integration tests (or contract tests)
   around the API layer that consumes `build_symbol_snapshot` to ensure
   `ValidatedFeatureBundle` enforcement does not regress external consumers.
-- **Shim repayment sequencing:** Migrate `tests/test_bug_57_cache_config.py` to the modern cache wiring first so `optipanel.api.app.CacheConfig` shim can be retired with minimal fallout.
+- **Shim repayment sequencing:** Migrate cache regression suites off the `CacheConfig` shim (first milestone: `tests/test_bug_57_cache_settings.py` now targets `TickCacheSettings`; remove shim once downstream consumers migrate).
 
 ## Suggested Starting Point When Resuming
 
