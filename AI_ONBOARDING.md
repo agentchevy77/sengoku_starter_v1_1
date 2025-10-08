@@ -34,7 +34,7 @@ legacy single–work order workflow and reflect how we operate today.
 
 ## Tooling Workflow
 
-1. Activate the project virtualenv (`source .venv/bin/activate`).
+1. Create/activate the project virtualenv (`python3 -m venv .venv && source .venv/bin/activate`). Install `textual` in that env before running CLI/UI suites (`pip install textual`).
 2. Install/upgrade developer tooling as needed (`pip install --upgrade pip
    setuptools wheel`).
 3. Run formatters/linters via `pre-commit run --all-files`.

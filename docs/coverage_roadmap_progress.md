@@ -26,9 +26,9 @@ and aggregation pipeline so we can resume the effort seamlessly next session.
   supply toggling (`tests/test_notify_supply.py`) to ensure the new behaviour
   stays locked in.
 - All focused suites currently pass via:
-  - `PYTEST_ADDOPTS='--no-cov' pytest tests/test_alert_model_unit.py -vv`
-  - `PYTEST_ADDOPTS='--no-cov' pytest tests/test_notify_engine_unit.py -vv`
-  - `PYTEST_ADDOPTS='--no-cov' pytest tests/test_engine_aggregate_unit.py -vv`
+  - `PYTEST_ADDOPTS="--no-cov --cov-fail-under=0" .venv/bin/pytest tests/test_alert_model_unit.py -vv`
+  - `PYTEST_ADDOPTS="--no-cov --cov-fail-under=0" .venv/bin/pytest tests/test_notify_engine_unit.py -vv`
+  - `PYTEST_ADDOPTS="--no-cov --cov-fail-under=0" .venv/bin/pytest tests/test_engine_aggregate_unit.py -vv`
   - `pytest` (1567 passed / 140 skipped / 1 xfailed)
 
 ## Next Focus Area
@@ -40,6 +40,7 @@ and aggregation pipeline so we can resume the effort seamlessly next session.
 - **Backfill regression coverage:** Add integration tests (or contract tests)
   around the API layer that consumes `build_symbol_snapshot` to ensure
   `ValidatedFeatureBundle` enforcement does not regress external consumers.
+- **Shim repayment sequencing:** Migrate `tests/test_bug_57_cache_config.py` to the modern cache wiring first so `optipanel.api.app.CacheConfig` shim can be retired with minimal fallout.
 
 ## Suggested Starting Point When Resuming
 
@@ -63,6 +64,8 @@ and aggregation pipeline so we can resume the effort seamlessly next session.
 - `_open_secure_append` currently ignores the `flags` argument supplied by
   `Path.open(..., opener=...)`; OR the opener-provided flags with our security
   defaults when we revisit the health monitor.
+- Temporary compatibility shims were added for legacy regression suites (see `docs/legacy_shim_debt.md`),
+  with DeprecationWarnings and a repayment plan to migrate tests to the modern APIs.
 
 Keep this file updated as progress continues.
 
