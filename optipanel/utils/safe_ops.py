@@ -19,6 +19,42 @@ T = TypeVar("T")
 _EPSILON = 1e-9
 
 
+def safe_int(value: Any, default: int = 0, *, warn: bool = True, context: str = "") -> int:
+    """Safely coerce value to int, using default on failure."""
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        if warn:
+            label = context or "value"
+            logger.warning(
+                "safe_int: failed to convert %s=%r (%s: %s); using default=%r",
+                label,
+                value,
+                type(exc).__name__,
+                exc,
+                default,
+            )
+        return default
+
+
+def safe_float(value: Any, default: float = 0.0, *, warn: bool = True, context: str = "") -> float:
+    """Safely coerce value to float, using default on failure."""
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        if warn:
+            label = context or "value"
+            logger.warning(
+                "safe_float: failed to convert %s=%r (%s: %s); using default=%r",
+                label,
+                value,
+                type(exc).__name__,
+                exc,
+                default,
+            )
+        return default
+
+
 def safe_divide(numerator: float, denominator: float, default: float = 0.0) -> float:
     """Safely divide two numbers, returning default if denominator is zero.
 
@@ -206,6 +242,8 @@ def safe_list_stats(values: list[float]) -> dict[str, float]:
 __all__ = [
     "safe_divide",
     "safe_index",
+    "safe_int",
+    "safe_float",
     "safe_int_env",
     "safe_float_env",
     "safe_json_loads",
