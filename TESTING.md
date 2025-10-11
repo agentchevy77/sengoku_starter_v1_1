@@ -29,6 +29,12 @@ pytest --cov-report=html    # Generate HTML report
 open htmlcov/index.html     # View coverage report
 ```
 
+### Avoiding "Hung" Pytest Runs
+- `SENGOKU_TEST_SCOPE=full` exercises the entire regression suite (≈22 s). When invoked without verbosity, pytest buffers output and the CLI can appear stalled.
+- Prefer `SENGOKU_TEST_SCOPE=full .venv/bin/pytest -v --tb=short` (or add `PYTEST_ADDOPTS='-v --tb=short'`) so progress streams continuously.
+- If you must run via `python -m pytest`, add `-u` (`python -u -m pytest ...`) to disable stdout buffering.
+- When using harnesses with strict timeouts, streaming output prevents false positives for “hangs”.
+
 ## Test Structure
 
 ### File Naming
