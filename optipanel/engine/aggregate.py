@@ -11,6 +11,17 @@ from optipanel.setups.engine import SetupConfig, compute_setups
 from optipanel.utils.decimal_types import D_ZERO, clamp_score, to_decimal
 
 
+def _bundle_to_floats(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """Convert Decimal values in a mapping to floats for serialization."""
+    out: dict[str, Any] = {}
+    for key, value in bundle.items():
+        if isinstance(value, Decimal):
+            out[key] = float(value)
+        else:
+            out[key] = value
+    return out
+
+
 def _clamp_int(x: Decimal) -> int:
     """Clamp Decimal value to 0-100 integer range."""
     return clamp_score(x, lo=0, hi=100)
@@ -243,7 +254,9 @@ def build_symbol_snapshot(
         "score": score,
         "advice": advice,
         "sustainment": sustainment,
-        "battlefield_bundle": dict(primary_bundle) if primary_bundle else dict(fallback_bundle),
+        "battlefield_bundle": (
+            _bundle_to_floats(primary_bundle) if primary_bundle else _bundle_to_floats(fallback_bundle)
+        ),
         "prob_chips": prob_chips,
     }
     snapshot["prob_summary"] = summarize_chips(prob_chips)
