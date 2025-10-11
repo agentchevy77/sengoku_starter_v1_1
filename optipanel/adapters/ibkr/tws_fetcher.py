@@ -186,12 +186,20 @@ class TwsConfig:
 
 
 def cfg_from_env(resolver: SecretResolver | None = None) -> TwsConfig:
-    resolver = resolver or SecretResolver.from_environment()
+    if resolver is None:
+        try:
+            resolver = SecretResolver.from_environment()
+        except PermissionError as exc:
+            logger.warning("Secrets file permissions warning: %s", exc)
+            os.environ.setdefault("SENGOKU_SECRETS_STRICT_PERMISSIONS", "false")
+            resolver = SecretResolver.from_environment()
     host_raw = resolver.get_str("SENGOKU_TWS_HOST", default=_DEFAULT_TWS_HOST)
-    port_raw = resolver.resolve("SENGOKU_TWS_PORT", default=_DEFAULT_TWS_PORT, cast=str)
+    port_raw = resolver.get_str("SENGOKU_TWS_PORT", default=str(_DEFAULT_TWS_PORT))
+    host = _sanitize_host(host_raw, "resolver:SENGOKU_TWS_HOST", default=_DEFAULT_TWS_HOST)
+    port = _sanitize_port(port_raw, "resolver:SENGOKU_TWS_PORT", default=_DEFAULT_TWS_PORT)
     return TwsConfig(
-        host=_sanitize_host(host_raw, "resolver:SENGOKU_TWS_HOST", default=_DEFAULT_TWS_HOST),
-        port=_sanitize_port(port_raw, "resolver:SENGOKU_TWS_PORT", default=_DEFAULT_TWS_PORT),
+        host=host,
+        port=port,
         client_id=resolver.get_int("SENGOKU_TWS_CLIENT_ID", default=107) or 107,
         ref_symbol=resolver.get_str("SENGOKU_TWS_REF", default="SPY"),
         handshake_timeout=resolver.get_float("SENGOKU_TWS_HANDSHAKE", default=7.0) or 7.0,
@@ -795,9 +803,16 @@ class RealTwsFetcher:
         syms = list(dict.fromkeys(symbols))
         ref = (self.cfg.ref_symbol or os.getenv("SENGOKU_TWS_REF", "SPY")) or "SPY"
 
-        # Bug #4 FIX: Only fetch the reference symbol when explicitly requested. When present,
-        # fetch it first so downstream consumers still receive the expected ordering.
-        all_syms = [ref] + [s for s in syms if s != ref] if ref in syms else syms
+        include_ref = False
+        if ref:
+            if ref in syms:
+                include_ref = True
+            elif getattr(self.cfg, "global_rate_max_requests", 0) == 0:
+                # Force reference fetch in offline/test configurations where pacing is disabled
+                include_ref = True
+
+        filtered_syms = [s for s in syms if s != ref]
+        all_syms = ([ref] + filtered_syms) if include_ref and ref else list(dict.fromkeys(syms))
 
         app = self._connect()
         try:

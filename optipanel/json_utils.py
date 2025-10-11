@@ -1,69 +1,98 @@
-"""JSON helpers that favour orjson with transparent fallbacks.
+"""Centralized JSON handling utilities, prioritizing orjson for performance."""
 
-The module mirrors a small subset of ``json``'s interface (``dumps``, ``dump``,
-``loads`` and ``JSONDecodeError``) so existing call sites can import it as a
-stand-in for the standard library while benefiting from the faster ``orjson``
-codec when available.
-"""
+import json
+import logging
+from decimal import Decimal
+from typing import Any
 
-from __future__ import annotations
+logger = logging.getLogger(__name__)
 
-import json as _std_json
-from typing import IO, Any, cast
-
-try:  # pragma: no cover - availability depends on installation
+# Determine if orjson is available
+try:
     import orjson
-except ImportError:  # pragma: no cover - exercised on platforms without orjson
-    _HAS_ORJSON = False
-    JSONDecodeError: type[Exception] = _std_json.JSONDecodeError
-else:  # pragma: no cover - trivial branch once imported
-    _HAS_ORJSON = True
-    JSONDecodeError = cast(type[Exception], orjson.JSONDecodeError)
+
+    USE_ORJSON = True
+except ImportError:
+    orjson = None
+    USE_ORJSON = False
 
 
-def _should_fallback(indent: int | None) -> bool:
-    """Return True when we need the stdlib for formatting options."""
+def _json_normalizer(obj: Any) -> Any:
+    """Normalize types not supported by standard JSON for serialization."""
+    if isinstance(obj, Decimal):
+        # Convert Decimal to float for JSON compatibility.
+        return float(obj)
 
-    if indent is None:
-        return False
-    # ``orjson`` only supports two-space indentation via OPT_INDENT_2.
-    return indent not in {0, 2}
+    # If using standard json, we must raise TypeError for unhandled types.
+    if not USE_ORJSON:
+        raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
-
-def _orjson_options(sort_keys: bool, indent: int | None) -> int:
-    option = 0
-    if not _HAS_ORJSON:
-        return option
-    if sort_keys:
-        option |= orjson.OPT_SORT_KEYS
-    if indent == 2:
-        option |= orjson.OPT_INDENT_2
-    return option
+    # If using orjson, we return the object and let orjson handle it if it can.
+    return obj
 
 
-def dumps(obj: Any, *, sort_keys: bool = False, indent: int | None = None) -> str:
-    """Serialize ``obj`` into JSON, preferring ``orjson`` when possible."""
+def dumps(data: Any, indent: int | None = None, sort_keys: bool = False, **kwargs) -> str:
+    """Serialize data to a JSON formatted string, using orjson if available."""
 
-    if not _HAS_ORJSON or _should_fallback(indent):
-        return _std_json.dumps(obj, sort_keys=sort_keys, indent=indent)
-    result: bytes = orjson.dumps(obj, option=_orjson_options(sort_keys, indent))
-    return result.decode()
+    # Ensure the normalizer is used if the caller didn't provide their own default
+    if "default" not in kwargs:
+        kwargs["default"] = _json_normalizer
+
+    if USE_ORJSON:
+        # Handle options for orjson
+        options = kwargs.pop("option", 0)
+        if indent:
+            # orjson only supports 2-space indent
+            options |= orjson.OPT_INDENT_2
+        if sort_keys:
+            options |= orjson.OPT_SORT_KEYS
+
+        try:
+            # orjson returns bytes, so we decode to utf-8 string.
+            return orjson.dumps(data, option=options, **kwargs).decode("utf-8")
+        except TypeError as e:
+            logger.error("JSON serialization failed (orjson): %s", e)
+            raise
+    else:
+        # Handle options for standard json
+        kwargs["indent"] = indent
+        kwargs["sort_keys"] = sort_keys
+
+        try:
+            return json.dumps(data, **kwargs)
+        except TypeError as e:
+            logger.error("JSON serialization failed (standard json): %s", e)
+            raise
 
 
-def dump(obj: Any, fp: IO[str], *, sort_keys: bool = False, indent: int | None = None) -> str:
-    """Serialize ``obj`` to ``fp`` returning the text payload written."""
+def dump(data: Any, fp, indent: int | None = None, sort_keys: bool = False, **kwargs) -> str:
+    """Serialize data and write it to a file-like object."""
 
-    text = dumps(obj, sort_keys=sort_keys, indent=indent)
+    text = dumps(data, indent=indent, sort_keys=sort_keys, **kwargs)
     fp.write(text)
     return text
 
 
-def loads(data: str | bytes | bytearray) -> Any:
-    """Deserialize JSON data using ``orjson`` when present."""
+def loads(data: str | bytes) -> Any:
+    """Deserialize JSON data, using orjson if available."""
+    if USE_ORJSON:
+        try:
+            return orjson.loads(data)
+        # Generalized exception handling for compatibility
+        except Exception as e:
+            # Log and raise for consistency
+            logger.error("JSON deserialization failed (orjson): %s", e)
+            raise
 
-    if not _HAS_ORJSON:
-        return _std_json.loads(data)
-    return orjson.loads(data)
+    else:
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError as e:
+            logger.error("JSON deserialization failed (standard json): %s", e)
+            raise
 
 
-__all__ = ["dumps", "dump", "loads", "JSONDecodeError"]
+# Define a consistent JSONDecodeError type for use across the application
+JSONDecodeError = orjson.JSONDecodeError if USE_ORJSON and hasattr(orjson, "JSONDecodeError") else json.JSONDecodeError
+
+__all__ = ["dump", "dumps", "loads", "USE_ORJSON", "JSONDecodeError"]

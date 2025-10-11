@@ -1,113 +1,88 @@
-"""Environment-aware error sanitiser used by CLI workflows (Bug #53)."""
+"""
+Error sanitization utility to prevent information disclosure in production environments.
+(Addresses Bug #53)
+"""
 
-from __future__ import annotations
-
-import json
 import logging
 import os
 import re
-from collections.abc import Mapping
-from typing import Any
-
-from optipanel.cli.config import ValidationError
 
 logger = logging.getLogger(__name__)
 
-_GENERIC_MESSAGES: Mapping[type[BaseException], str] = {
-    json.JSONDecodeError: "Invalid JSON syntax",
-    ValidationError: "Validation failed",
-    ValueError: "Invalid value provided",
-    TypeError: "Invalid value provided",
-}
-
-_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"https?://[^\s]+"), "[URL_REDACTED]"),
-    (re.compile(r"([A-Za-z]:)?[/\\][^\s]+"), "[PATH_REDACTED]"),
-    (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[EMAIL_REDACTED]"),
-    (re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"), "[IP_REDACTED]"),
-    (re.compile(r"(?:ghp|gho|ghs|pat)_[A-Za-z0-9]{20,}"), "[TOKEN_REDACTED]"),
-)
-
 
 class ErrorSanitizer:
-    """Sanitize exception messages for user-facing output."""
+    """
+    Sanitizes exceptions, providing detailed logs for developers and safe messages for users.
+    """
 
-    def __init__(self, env: str | None = None, enable_redaction: bool | None = None) -> None:
-        env_name = env or os.getenv("SENGOKU_ENV", "development")
-        self._env = env_name.lower()
-        if enable_redaction is None:
-            enable_redaction = os.getenv("SENGOKU_ERROR_REDACTION", "").strip().lower() in {"1", "true", "yes"}
-        self.enable_redaction = bool(enable_redaction or self.is_production)
+    def __init__(self, is_production: bool | None = None):
+        if is_production is None:
+            # Determine environment automatically
+            env = os.getenv("SENGOKU_ENV", "development").lower()
+            self.is_production = env in ("production", "prod")
+        else:
+            self.is_production = is_production
 
-    @property
-    def is_production(self) -> bool:
-        return self._env == "production"
+        # Define patterns for sensitive information (e.g., file paths)
+        self._sensitive_patterns = [
+            # Basic path obfuscation
+            re.compile(r"(/[\w/.-]+/[\w.-]+)"),
+        ]
 
-    def sanitize(self, exc: BaseException, context: str | None = None) -> str:
-        original_message = str(exc) if str(exc) else exc.__class__.__name__
-        category = self._categorize(exc)
+    def sanitize(
+        self,
+        exception: Exception | str,
+        context: str = "",
+        safe_message: str = "An internal error occurred.",
+    ) -> str:
+        """
+        Logs the exception with full context and returns a safe, sanitized message.
+        """
+
+        # Always log the full details for internal diagnostics
+        self._log_exception(exception, context)
+
+        error_message = str(exception) if isinstance(exception, Exception) else exception
 
         if self.is_production:
-            message = self._production_message(exc)
+            # In production, apply sanitization
+            sanitized_message = self._apply_patterns(error_message)
+            if not sanitized_message.strip():
+                sanitized_message = safe_message
+
+            display_context = self._apply_patterns(context)
+            if display_context:
+                return f"{sanitized_message} (Context: {display_context})"
+            return sanitized_message
         else:
-            message = original_message
-            if self.enable_redaction:
-                message = self._apply_redaction(message)
+            # In development, return a detailed message
+            return self._format_detailed_message(error_message, context)
 
-        if context:
-            message = f"{message} in {context}" if self.is_production else f"{message} (in {context})"
-
-        logger.error(
-            "error_sanitizer category=%s type=%s message=%s context=%s",
-            category,
-            exc.__class__.__name__,
-            original_message,
-            context or "",
-        )
+    def _apply_patterns(self, message: str) -> str:
+        """Applies regex patterns to remove sensitive information."""
+        if not isinstance(message, str):
+            return "[REDACTED]"
+        for pattern in self._sensitive_patterns:
+            message = pattern.sub("[REDACTED]", message)
         return message
 
-    def get_safe_details(
-        self,
-        exc: BaseException,
-        *,
-        include_type: bool = False,
-        include_message: bool = False,
-    ) -> dict[str, Any]:
-        details: dict[str, Any] = {"category": self._categorize(exc)}
-        if include_type:
-            details["type"] = exc.__class__.__name__
-        if include_message:
-            details["message"] = self.sanitize(exc)
-        return details
+    def _log_exception(self, exception: Exception | str, context: str):
+        """Internal method to log the exception traceback."""
+        log_message = f"Sanitized Error encountered during '{context}'"
 
-    def _production_message(self, exc: BaseException) -> str:
-        for exc_type, msg in _GENERIC_MESSAGES.items():
-            if isinstance(exc, exc_type):
-                return msg
-        return "An error occurred"
+        if isinstance(exception, Exception):
+            logger.error(f"{log_message}: {type(exception).__name__}", exc_info=exception)
+        else:
+            logger.error(f"{log_message}: {exception}")
 
-    def _categorize(self, exc: BaseException) -> str:
-        if isinstance(exc, (json.JSONDecodeError, ValidationError)):
-            return "validation"
-        if isinstance(exc, OSError):
-            return "system"
-        return "runtime"
-
-    def _apply_redaction(self, message: str) -> str:
-        redacted = message
-        for pattern, replacement in _REDACTION_PATTERNS:
-            redacted = pattern.sub(replacement, redacted)
-        return redacted
+    def _format_detailed_message(self, error_message: str, context: str) -> str:
+        """Formats a detailed message for development environments."""
+        msg = error_message.strip()
+        return f"{msg} (in {context})" if context else msg
 
 
-def sanitize_error_message(
-    exc: BaseException,
-    *,
-    context: str | None = None,
-    env: str | None = None,
-) -> str:
-    sanitizer = ErrorSanitizer(env=env)
-    return sanitizer.sanitize(exc, context=context)
+# Global instance for convenience (Used by cli/main.py)
+_error_sanitizer = ErrorSanitizer()
 
-
-__all__ = ["ErrorSanitizer", "sanitize_error_message"]
+# Expose the global instance and the class
+__all__ = ["ErrorSanitizer", "_error_sanitizer"]

@@ -395,25 +395,25 @@ class SengokuMinimalTui(App):
         *,
         purpose: str,
     ) -> asyncio.Task:
-        """Create and track a background task, logging failures.
+        """Create and track a background task, logging failures and preventing leaks."""
 
-        FIX for Bug #62: Ensures we retain a reference to background work so
-        unexpected exceptions are surfaced instead of being silently discarded.
-        """
+        task: asyncio.Task | None = None
 
-        task = asyncio.create_task(coro)
-        self._background_tasks.add(task)
-
-        def _finalizer(done: asyncio.Task) -> None:
-            self._background_tasks.discard(done)
-            if done.cancelled():
-                return
+        async def runner() -> Any:
+            nonlocal task
             try:
-                done.result()
+                return await coro
+            except asyncio.CancelledError:
+                raise
             except Exception:  # pragma: no cover - defensive safeguard
                 logger.exception("Background task '%s' raised an exception", purpose)
+                raise
+            finally:
+                if task is not None:
+                    self._background_tasks.discard(task)
 
-        task.add_done_callback(_finalizer)
+        task = asyncio.create_task(runner())
+        self._background_tasks.add(task)
         return task
 
     @staticmethod

@@ -30,15 +30,10 @@ from optipanel.recon.enrich import (
 )
 from optipanel.recon.readiness import readiness_from_front_sustain
 from optipanel.setups.engine import compute_setups
-from optipanel.utils.error_sanitizer import ErrorSanitizer
+from optipanel.utils.error_sanitizer import _error_sanitizer
 from optipanel.utils.safe_ops import safe_int_env
 
 _LOG_INITIALIZED = False
-
-# FIX for Bug #53: Initialize error sanitizer for safe error message handling
-# This prevents information disclosure by sanitizing exception messages before
-# displaying them to users while preserving full details in logs
-_error_sanitizer = ErrorSanitizer()
 
 _MICRO_SPECS = (
     ("M15", "15m", compute_microchips_m15),
@@ -69,40 +64,45 @@ _SUPPLY_ORDER = (
 def _format_json_decode_error(exc: Exception, label: str) -> str:
     """Return a user-facing message for JSON parse failures.
 
-    We normalise differences between the stdlib ``json`` module and optional
-    accelerated parsers (e.g. orjson) so the CLI always surfaces clear,
-    user-friendly diagnostics.  The sanitizer still logs full details, but the
-    returned string is what is shown to the operator.
+    Normalizes differences between stdlib json and orjson for clear diagnostics.
     """
 
     context = f"{label} JSON"
+    # Use the sanitizer first to log the full details
     sanitized = _error_sanitizer.sanitize(exc, context=context)
 
-    # In production we rely on the generic message produced by the sanitizer to
-    # avoid leaking implementation details.
+    # In production, rely on the generic sanitized message.
     if _error_sanitizer.is_production:
         return sanitized
 
-    # Development mode: offer human-readable wording independent of the parser
-    # backend (stdlib vs orjson).  When the parser reaches EOF while still
-    # expecting more input we translate the message to "unexpected end of data"
-    # for consistency with orjson's phrasing and the existing test contract.
+    # Development mode: offer human-readable wording independent of the parser backend.
     msg = getattr(exc, "msg", str(exc)).strip()
     doc = getattr(exc, "doc", None)
     pos = getattr(exc, "pos", None)
 
+    # Detect truncated input (End-of-File reached while expecting data)
     eof = False
-    if isinstance(doc, (str, bytes)) and isinstance(pos, int):
+    # Check common messages indicating incomplete data (e.g., from stdlib json)
+    if ("Unterminated string" in msg or "Expecting" in msg) and doc is not None and pos is not None:
         try:
-            eof = pos >= len(doc)
+            if pos >= len(doc) - 1:
+                eof = True
         except TypeError:
-            eof = False
+            pass  # Handle if doc/pos types are unexpected
+
+    # Check for orjson specific EOF message if not already detected
+    if not eof and "unexpected end of data" in msg.lower():
+        eof = True
 
     friendly = "unexpected end of data" if eof else msg.lower()
 
+    base = f"invalid {label} JSON"
+    detail = f"{friendly}"
+    message = f"{base}: {detail}" if detail else base
+
     if context:
-        return f"{friendly} (in {context})"
-    return friendly
+        return f"{message} (in {context})"
+    return message
 
 
 def _load_json_arg(raw: str, label: str, validator: str | None = None) -> Any:
@@ -119,6 +119,9 @@ def _load_json_arg(raw: str, label: str, validator: str | None = None) -> Any:
     Raises:
         SystemExit: On JSON parse or validation errors with clear messages
     """
+    if not raw:
+        return {}
+
     # Parse JSON
     try:
         data = json.loads(raw)
@@ -127,10 +130,8 @@ def _load_json_arg(raw: str, label: str, validator: str | None = None) -> Any:
         print(f"Error: {safe_msg}.", file=sys.stderr)
         raise SystemExit(2) from exc
     except (TypeError, ValueError) as exc:
-        # FIX for Bug #53: Use sanitized error message to prevent information disclosure
-        # Full error details are logged, but only safe message shown to user
-        safe_msg = _error_sanitizer.sanitize(exc, context=f"{label} JSON")
-        print(f"Error: {safe_msg}.", file=sys.stderr)
+        safe_msg = _error_sanitizer.sanitize(exc, context=f"{label} processing")
+        print(f"Error processing {label}: {safe_msg}", file=sys.stderr)
         raise SystemExit(2) from exc
 
     # Validate structure if validator specified
