@@ -47,9 +47,7 @@ def _calculate_risk_penalty(
     # Penalty thresholds from config (Bug #39 fix - now configurable)
     exhaustion_threshold = Decimal(str(config.advice_exhaustion_veto))
     sustainability_threshold = Decimal(str(config.advice_sustainability_min))
-    # Note: For Bug #33 penalty, we use a slightly lower threshold (60 vs 70)
-    # to penalize high-risk setups earlier in the score calculation
-    fakeout_threshold = Decimal("60")
+    fakeout_threshold = Decimal(str(config.advice_fakeout_risk_max))
 
     # Penalty weight: each point of excess risk reduces score by 0.5 points
     penalty_weight = Decimal("0.5")

@@ -170,12 +170,39 @@ class TestBug39ConfigurableThresholds:
         penalty_exceeded = _calculate_risk_penalty(
             exhaustion=Decimal("75"),  # 5 points above threshold
             sustainability=Decimal("35"),  # 5 points below threshold
-            fakeout_risk=Decimal("65"),  # 5 points above fakeout threshold (60)
+            fakeout_risk=Decimal("75"),  # 5 points above fakeout threshold (70)
             config=config,
         )
 
         # Should have penalties for exceeding thresholds
         assert penalty_exceeded > Decimal("0")
+
+    def test_fakeout_threshold_respects_config(self) -> None:
+        """Verify fakeout penalty clamps against the configurable threshold."""
+        from optipanel.engine.aggregate import _calculate_risk_penalty
+
+        baseline_config = SetupConfig(advice_fakeout_risk_max=70.0)
+        relaxed_config = SetupConfig(advice_fakeout_risk_max=90.0)
+
+        exhaustion = Decimal("40")
+        sustainability = Decimal("60")
+        fakeout_risk = Decimal("80")
+
+        baseline_penalty = _calculate_risk_penalty(
+            exhaustion=exhaustion,
+            sustainability=sustainability,
+            fakeout_risk=fakeout_risk,
+            config=baseline_config,
+        )
+
+        relaxed_penalty = _calculate_risk_penalty(
+            exhaustion=exhaustion,
+            sustainability=sustainability,
+            fakeout_risk=fakeout_risk,
+            config=relaxed_config,
+        )
+
+        assert relaxed_penalty < baseline_penalty
 
     def test_different_symbols_with_same_config(self) -> None:
         """Verify that config is consistently applied across different symbols."""

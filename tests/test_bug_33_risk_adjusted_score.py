@@ -68,25 +68,25 @@ class TestBug33RiskPenaltyCalculation:
 
     def test_fakeout_penalty_when_high_risk(self, default_config):
         """Test penalty when fakeout risk exceeds threshold."""
-        # Fakeout risk = 70 (10 over threshold of 60)
-        # Expected penalty: 10 * 0.5 = 5
+        fakeout_threshold = Decimal(str(default_config.advice_fakeout_risk_max))
+        # Fakeout risk = threshold + 10 -> 10 * 0.5 = 5 penalty
         exhaustion = Decimal("50")  # Safe
         sustainability = Decimal("60")  # Safe
-        fakeout_risk = Decimal("70")
+        fakeout_risk = fakeout_threshold + Decimal("10")
 
         penalty = _calculate_risk_penalty(exhaustion, sustainability, fakeout_risk, default_config)
 
-        assert penalty == Decimal("5.0"), f"Expected 5.0 penalty for fakeout_risk=70, got {penalty}"
+        assert penalty == Decimal("5.0"), f"Expected 5.0 penalty for fakeout_risk={fakeout_risk}, got {penalty}"
 
     def test_combined_penalties_when_multiple_risks_high(self, default_config):
         """Test that penalties combine when multiple risk factors are high."""
         # Exhaustion = 80 (10 over) → 5 penalty
         # Sustainability = 30 (10 under) → 5 penalty
-        # Fakeout risk = 70 (10 over) → 5 penalty
+        fakeout_threshold = Decimal(str(default_config.advice_fakeout_risk_max))
         # Total expected: 15
         exhaustion = Decimal("80")
         sustainability = Decimal("30")
-        fakeout_risk = Decimal("70")
+        fakeout_risk = fakeout_threshold + Decimal("10")
 
         penalty = _calculate_risk_penalty(exhaustion, sustainability, fakeout_risk, default_config)
 
@@ -97,7 +97,7 @@ class TestBug33RiskPenaltyCalculation:
         # At thresholds (should have zero penalty)
         exhaustion = Decimal("70")  # Exactly at threshold
         sustainability = Decimal("40")  # Exactly at threshold
-        fakeout_risk = Decimal("60")  # Exactly at threshold
+        fakeout_risk = Decimal(str(default_config.advice_fakeout_risk_max))
 
         penalty = _calculate_risk_penalty(exhaustion, sustainability, fakeout_risk, default_config)
 
@@ -108,7 +108,7 @@ class TestBug33RiskPenaltyCalculation:
         # Each metric 1 point over → 0.5 penalty each
         exhaustion = Decimal("71")
         sustainability = Decimal("39")
-        fakeout_risk = Decimal("61")
+        fakeout_risk = Decimal(str(default_config.advice_fakeout_risk_max)) + Decimal("1")
 
         penalty = _calculate_risk_penalty(exhaustion, sustainability, fakeout_risk, default_config)
 
@@ -132,7 +132,7 @@ class TestBug33RiskPenaltyCalculation:
         # Fractional values
         exhaustion = Decimal("75.5")  # 5.5 over → 2.75
         sustainability = Decimal("35.5")  # 4.5 under → 2.25
-        fakeout_risk = Decimal("65.5")  # 5.5 over → 2.75
+        fakeout_risk = Decimal(str(default_config.advice_fakeout_risk_max)) + Decimal("5.5")  # 5.5 over → 2.75
         # Total: 7.75
 
         penalty = _calculate_risk_penalty(exhaustion, sustainability, fakeout_risk, default_config)
