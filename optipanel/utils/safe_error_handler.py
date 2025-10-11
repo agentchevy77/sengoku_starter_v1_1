@@ -122,7 +122,21 @@ class CircuitBreakerState:
 
 
 class SafeErrorHandler:
-    """Fail-safe error logging that resists recursive failures."""
+    """Fail-safe error logging that resists recursive failures.
+
+    Parameters
+    ----------
+    logger:
+        Optional logger to use. When omitted, the handler resolves a logger by
+        name using the provided `context`.
+    context:
+        Logical identifier used for caching the handler, metrics, and circuit
+        breaker state. Defaults to ``logger.name`` or ``"global"``.
+    max_recursion:
+        Upper bound on nested error handling within a single thread before
+        falling back to stderr. Replaces the historical ``recursion_limit``
+        keyword that existed prior to the rollback.
+    """
 
     MAX_RECURSION_DEPTH = 8
 
@@ -334,6 +348,11 @@ def handle_error_safely(
     logger: logging.Logger | None = None,
     **log_kwargs: Any,
 ) -> None:
+    """Convenience wrapper that routes errors through a cached SafeErrorHandler.
+
+    All parameters are keyword-only to avoid ambiguity now that the public API
+    has moved away from positional ``context`` / ``exc`` arguments.
+    """
     handler = SafeErrorHandler._get_or_create_handler(context, logger=logger)
     handler.handle_error(message, exc=exc, exc_info=exc_info, **log_kwargs)
 
