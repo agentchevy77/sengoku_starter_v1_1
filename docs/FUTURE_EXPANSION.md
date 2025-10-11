@@ -25,6 +25,10 @@ we commit to implementing them.
   time monitoring.
 - Add synthetic tests or health checks that exercise the full stack regularly.
 
+## Configuration & Data Contracts
+- Extend Pydantic validation to TWS payloads, alert envelopes, and feature bundles to eliminate implicit dict assumptions.
+- Introduce typed factories/helpers so downstream components consume Pydantic models directly (reduces coercion defects).
+- Document configuration override precedence (file vs env vs secrets) now that validation happens centrally. 
+
 _Keep this file terse; as ideas firm up, promote them to proper work orders with
 allowed paths and definition of done._
-

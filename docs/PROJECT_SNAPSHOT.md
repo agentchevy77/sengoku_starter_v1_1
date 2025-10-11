@@ -45,8 +45,12 @@ sprint, merge a substantial PR, or kick off a new workstream.
 - Extended runtime loop integration coverage (`tests/test_runtime_loop.py`).
 - Enabled `pytest-cov` and `pre-commit` hooks by default.
 - UI optional dependency bump (`plotext>=6.2.0`).
+- Introduced Pydantic v2 configuration models and refactored the loader to validate settings at startup (`optipanel/config/models.py`, `optipanel/config/loader.py`).
+- Hardened strategy computation with dedicated setup/aggregate unit suites (`tests/test_setups_engine_unit.py`, `tests/test_engine_aggregate_unit.py`).
 
 ## Parking Lot / Follow-ups
+- Roll Pydantic models through remaining boundaries (TWS fetcher payloads, alert schemas, feature bundles) to replace ad-hoc dict handling.
+- Evaluate adopting Pydantic `field_serializer`/`field_validator` patterns to remove deprecation warnings and lower JSON serialization overhead.
 - Implement Textual TUI + FastAPI gateway prototype per WO-UI-WEB-01.
 - Add async smoke tests once the new UI/Web layers land.
 - Consider richer budget meter telemetry for observability.
