@@ -11,7 +11,7 @@ We rolled `feature/session-logs` back to commit `b50635c` (2025-10-05) to get of
 - ✅ **Baseline restored:** `SENGOKU_TEST_SCOPE=full pytest -v --tb=short` now reports **835 passed / 12 skipped / 0 failed** with total coverage at **86.4 %**. Verbose mode is required in this environment to avoid buffered output appearing as a hang.
 - ✅ **Bucket 1 – Data Integrity / CLI:** JSON serialization and sanitizer regressions corrected (`optipanel/json_utils.py`, `optipanel/utils/error_sanitizer.py`, `optipanel/cli/main.py`, `optipanel/engine/aggregate.py`); targeted tests remain green.
 - ✅ **Bucket 2/4 – TWS Integration:** Stabilised fetcher reintroduced with RateLimiter compatibility fixes; Bug #4/43 scenarios remain green (`optipanel/adapters/ibkr/tws_fetcher.py`).
-- ✅ **Bucket 3 – Concurrency & UI:** Textual refresh race and background task tracking reinstated (`optipanel/ui/textual/minimal.py`); UI regression suites still passing apart from legacy warning noise.
+- ✅ **Bucket 3 – Concurrency & UI:** Textual refresh race and background task tracking reinstated (`optipanel/ui/textual/minimal.py`); UI regression suites still passing (remaining runtime warnings stem from Textual's own `to_thread` mocks and are tracked as low-priority polish).
 - ✅ **Bucket 4 – Strategy Computation:** Fresh unit suites now protect `optipanel/setups/engine.py` and `optipanel/engine/aggregate.py`, covering scoring logic, risk penalties, and advice orchestration.
 
 ## Proactive Hardening Phase (Dark-Debt Coverage)
