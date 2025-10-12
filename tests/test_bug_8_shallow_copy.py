@@ -51,8 +51,6 @@ def test_shallow_copy_with_nested_bundles():
     assert original_feat["bundles"]["15m"]["last"] == 149.5, "Deep copy failed to protect original"
     print("✓ Test 3 passed: Deep copy properly isolates nested structures")
 
-    return True
-
 
 def test_actual_code_path():
     """Test the actual code path in gather_panels to see if bug manifests."""

@@ -8,7 +8,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_serializer, field_validator
 
 D = Decimal
 
@@ -47,10 +47,14 @@ class SetupConfigModel(BaseModel):
     breakout_gap_min: D = Field(default=D("0.01"), ge=0)
     breakdown_gap_min: D = Field(default=D("0.01"), ge=0)
 
-    model_config = ConfigDict(
-        extra="allow",
-        json_encoders={Decimal: str},
-    )
+    model_config = ConfigDict(extra="allow")
+
+    # Serialize Decimal fields as strings for JSON output to preserve precision.
+    @field_serializer("*", when_used="json")
+    def serialize_decimal(self, value: Any) -> Any:
+        if isinstance(value, Decimal):
+            return str(value)
+        return value
 
     @field_validator("*", mode="before")
     @classmethod
