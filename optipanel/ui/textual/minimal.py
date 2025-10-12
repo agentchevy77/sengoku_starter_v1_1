@@ -442,11 +442,12 @@ class SengokuMinimalTui(App):
             The panel text, or empty string if generation is stale
         """
         pane = self.query_one(CommandRoomPane)
+        refresh_future: asyncio.Task | None = None
         try:
             # Fix for Issue #16: Add timeout to prevent permanent freeze
             # FIX for Bug #52: Use configurable timeout from UIConfig
             # Timeout can be configured via SENGOKU_UI_REFRESH_TIMEOUT environment variable
-            result = await asyncio.wait_for(
+            refresh_future = asyncio.create_task(
                 asyncio.to_thread(
                     run_tick,
                     self._profiles_yaml,
@@ -454,9 +455,9 @@ class SengokuMinimalTui(App):
                     features_yaml_path=self._features_yaml,
                     width=self._width,
                     top_n=self._top_n,
-                ),
-                timeout=self._ui_config.refresh_timeout,
+                )
             )
+            result = await asyncio.wait_for(refresh_future, timeout=self._ui_config.refresh_timeout)
             panel_text = str(result.get("panel", ""))
         except TimeoutError:
             # Backend operation timed out
@@ -465,6 +466,11 @@ class SengokuMinimalTui(App):
             panel_text = f"[ERROR] Refresh timed out after {timeout_text}"
         except Exception as exc:  # pragma: no cover - defensive
             panel_text = f"[ERROR] {exc!r}"
+        finally:
+            if refresh_future is not None and not refresh_future.done():
+                refresh_future.cancel()
+                with suppress(asyncio.CancelledError):
+                    await refresh_future
 
         # Only update display if we're still the current generation
         # This prevents stale updates from orphaned tasks

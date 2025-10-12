@@ -13,12 +13,11 @@ import threading
 import time
 import traceback
 from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
-from contextlib import suppress
 
 logger = logging.getLogger(__name__)
 

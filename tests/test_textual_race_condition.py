@@ -14,6 +14,25 @@ from unittest.mock import Mock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def mock_run_tick_default():
+    """Patch run_tick to a fast stub for all race condition tests."""
+    with patch("optipanel.ui.textual.minimal.run_tick", autospec=True) as mock_run_tick:
+        mock_run_tick.return_value = {"panel": "test_data"}
+        yield mock_run_tick
+
+
+@pytest.fixture(autouse=True)
+async def drain_pending_tasks():
+    yield
+    pending = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
+    if not pending:
+        return
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+
+
 class TestRefreshRaceCondition:
     """Test suite for Issue #14: Critical Race Condition in UI Refresh Logic."""
 
@@ -41,40 +60,36 @@ class TestRefreshRaceCondition:
     @pytest.mark.asyncio
     async def test_race_condition_exists_in_original(self, mock_app):
         """Demonstrate that the race condition exists in the original implementation."""
-        # Track how many tasks are created
-        tasks_created = []
-        original_create_task = asyncio.create_task
+        call_generations: list[int] = []
 
-        def track_create_task(coro):
-            task = original_create_task(coro)
-            tasks_created.append(task)
-            return task
+        async def fake_refresh(gen: int) -> str:
+            call_generations.append(gen)
+            await asyncio.sleep(0)
+            return f"data_{gen}"
 
-        with (
-            patch("asyncio.create_task", side_effect=track_create_task),
-            patch("optipanel.ui.service.run_tick", new_callable=Mock) as mock_run_tick,
-        ):
-            mock_run_tick.return_value = {"panel": "test_data"}
+        with patch.object(mock_app, "_refresh_once_with_generation", new=fake_refresh):
 
             # Simulate concurrent calls to _schedule_refresh
             # This mimics what happens when timer fires while user presses 'R'
-
-            # Start first refresh (simulating timer)
             mock_app._schedule_refresh()
-
-            # Immediately start second refresh (simulating user pressing 'R')
+            await asyncio.sleep(0)  # Yield so first refresh starts before forcing
             mock_app._schedule_refresh(force=True)
 
             # Give tasks a chance to start
             await asyncio.sleep(0.01)
 
-            assert len(tasks_created) >= 1, "At least one task should be created"
+            assert call_generations, "Refresh execution should invoke the refresh coroutine"
+            assert mock_app._refresh_generation >= 1
 
             # Ensure tasks complete to avoid leaking coroutines
-            if tasks_created:
-                await asyncio.gather(*tasks_created, return_exceptions=True)
             if mock_app._background_tasks:
-                await asyncio.gather(*mock_app._background_tasks, return_exceptions=True)
+                await asyncio.gather(*list(mock_app._background_tasks), return_exceptions=True)
+            inflight = mock_app._inflight
+            if inflight is not None:
+                if hasattr(inflight, "wait"):
+                    await inflight.wait(suppress_cancel=True)
+                else:
+                    await asyncio.gather(inflight, return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_orphaned_task_scenario(self, mock_app):

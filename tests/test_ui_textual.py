@@ -16,11 +16,31 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from optipanel.ui.textual.minimal import CommandRoomPane, SengokuMinimalTui
+
+
+@pytest.fixture(autouse=True)
+def mock_run_tick_default():
+    """Provide a lightweight default stub for run_tick to keep async tests fast and quiet."""
+    with patch("optipanel.ui.textual.minimal.run_tick", autospec=True) as mock_run_tick:
+        mock_run_tick.return_value = {"panel": "stub"}
+        yield mock_run_tick
+
+
+@pytest.fixture(autouse=True)
+async def drain_pending_tasks():
+    """Ensure no background asyncio tasks leak between tests."""
+    yield
+    pending = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
+    if not pending:
+        return
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
 
 
 class TestSengokuMinimalTuiInitialization:
@@ -78,7 +98,7 @@ class TestAsyncTaskManagement:
         app._refresh_lock = asyncio.Lock()
 
         # Mock the refresh task
-        mock_task = AsyncMock()
+        mock_task = Mock(spec=asyncio.Task)
         mock_task.done.return_value = False
         app._inflight = mock_task
 
@@ -93,7 +113,7 @@ class TestAsyncTaskManagement:
         assert mock_task.cancel.call_count == 0  # No forced cancellations
 
     @pytest.mark.asyncio
-    async def test_generation_tracking_prevents_stale_updates(self):
+    async def test_generation_tracking_prevents_stale_updates(self, mock_run_tick_default):
         """Test that generation tracking prevents stale updates (Issue #15)."""
         app = SengokuMinimalTui(Path("/tmp/profiles.yaml"), "mock")
 
@@ -106,22 +126,20 @@ class TestAsyncTaskManagement:
         app._refresh_generation = 1
 
         # Simulate old task with generation 1
-        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            mock_thread.return_value = {"panel": "old data"}
-            result = await app._refresh_once_with_generation(1)
-            assert result == "old data"
-            mock_pane.display.assert_called_once_with("old data")
+        mock_run_tick_default.return_value = {"panel": "old data"}
+        result = await app._refresh_once_with_generation(1)
+        assert result == "old data"
+        mock_pane.display.assert_called_once_with("old data")
 
         # Now increment generation (simulating new refresh started)
         app._refresh_generation = 2
         mock_pane.reset_mock()
 
         # Old task with stale generation should not update UI
-        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            mock_thread.return_value = {"panel": "stale data"}
-            result = await app._refresh_once_with_generation(1)  # Old generation
-            assert result == ""  # Empty string returned
-            mock_pane.display.assert_not_called()  # UI not updated
+        mock_run_tick_default.return_value = {"panel": "stale data"}
+        result = await app._refresh_once_with_generation(1)  # Old generation
+        assert result == ""  # Empty string returned
+        mock_pane.display.assert_not_called()  # UI not updated
 
     @pytest.mark.asyncio
     async def test_force_refresh_cancels_inflight(self):
@@ -151,7 +169,7 @@ class TestAsyncTaskManagement:
         assert app._inflight != old_task
 
     @pytest.mark.asyncio
-    async def test_timeout_protection(self):
+    async def test_timeout_protection(self, mock_run_tick_default):
         """Test that backend operations timeout after 30 seconds (Issue #16)."""
         app = SengokuMinimalTui(Path("/tmp/profiles.yaml"), "mock")
         app._refresh_generation = 1  # Ensure generation matches
@@ -160,18 +178,17 @@ class TestAsyncTaskManagement:
         mock_pane = Mock(spec=CommandRoomPane)
         app.query_one = Mock(return_value=mock_pane)
 
-        # Mock asyncio.wait_for to simulate a timeout
-        with patch("optipanel.ui.textual.minimal.asyncio.wait_for") as mock_wait_for:
-            mock_wait_for.side_effect = TimeoutError()
+        # Simulate timeout by having run_tick raise TimeoutError
+        mock_run_tick_default.side_effect = TimeoutError()
 
-            # Call the method (testing side effects, not return value)
-            await app._refresh_once_with_generation(1)
+        # Call the method (testing side effects, not return value)
+        await app._refresh_once_with_generation(1)
 
-            # Should display timeout error message
-            mock_pane.display.assert_called_once()
-            call_args = mock_pane.display.call_args[0][0]
-            assert "timed out" in call_args.lower()
-            assert "30 seconds" in call_args
+        # Should display timeout error message
+        mock_pane.display.assert_called_once()
+        call_args = mock_pane.display.call_args[0][0]
+        assert "timed out" in call_args.lower()
+        assert "30 seconds" in call_args
 
 
 class TestRefreshLogic:
@@ -236,7 +253,7 @@ class TestErrorHandling:
     """Test suite for error handling and recovery."""
 
     @pytest.mark.asyncio
-    async def test_backend_exception_handling(self):
+    async def test_backend_exception_handling(self, mock_run_tick_default):
         """Test that backend exceptions are caught and displayed."""
         app = SengokuMinimalTui(Path("/tmp/profiles.yaml"), "mock")
         app._refresh_generation = 1  # Ensure generation matches
@@ -245,18 +262,17 @@ class TestErrorHandling:
         mock_pane = Mock(spec=CommandRoomPane)
         app.query_one = Mock(return_value=mock_pane)
 
-        # Mock asyncio.wait_for to raise an exception
-        with patch("optipanel.ui.textual.minimal.asyncio.wait_for") as mock_wait_for:
-            mock_wait_for.side_effect = RuntimeError("Backend failed")
+        # Simulate backend failure
+        mock_run_tick_default.side_effect = RuntimeError("Backend failed")
 
-            # Call the method (testing side effects, not return value)
-            await app._refresh_once_with_generation(1)
+        # Call the method (testing side effects, not return value)
+        await app._refresh_once_with_generation(1)
 
-            # Should display error message
-            mock_pane.display.assert_called_once()
-            call_args = mock_pane.display.call_args[0][0]
-            assert "[ERROR]" in call_args
-            assert "Backend failed" in call_args
+        # Should display error message
+        mock_pane.display.assert_called_once()
+        call_args = mock_pane.display.call_args[0][0]
+        assert "[ERROR]" in call_args
+        assert "Backend failed" in call_args
 
     @pytest.mark.skip(reason="Issue with testing exception suppression in async context")
     @pytest.mark.asyncio
@@ -290,7 +306,7 @@ class TestErrorHandling:
         assert app._inflight.cancelled()
 
     @pytest.mark.asyncio
-    async def test_cancelled_task_cleanup(self):
+    async def test_cancelled_task_cleanup(self, mock_run_tick_default):
         """Test proper cleanup of cancelled tasks."""
         app = SengokuMinimalTui(Path("/tmp/profiles.yaml"), "mock")
         app._refresh_lock = asyncio.Lock()
@@ -300,13 +316,23 @@ class TestErrorHandling:
             await asyncio.sleep(10)
             return "should not reach here"
 
+        mock_pane = Mock(spec=CommandRoomPane)
+        app.query_one = Mock(return_value=mock_pane)
+
         app._inflight = asyncio.create_task(slow_task())
+        old_task = app._inflight
 
         # Force refresh should cancel it
+        mock_run_tick_default.return_value = {"panel": "new data"}
         await app._schedule_refresh_async(force=True)
 
-        # Old task should be cancelled
-        assert app._inflight != asyncio.create_task(slow_task())  # New task created
+        # Old task should be cancelled and replaced with a new handle
+        assert old_task.cancelled()
+        new_task_handle = app._inflight
+        assert new_task_handle is not None
+        assert new_task_handle is not old_task
+        if hasattr(new_task_handle, "wait"):
+            await new_task_handle.wait(suppress_cancel=True)
 
 
 class TestBackwardCompatibility:
@@ -354,18 +380,37 @@ class TestConcurrentRefreshScenarios:
             return f"data_{gen}"
 
         # Simulate rapid force refreshes
-        tasks = []
-        for i in range(5):
-            app._refresh_generation = i
-            with patch.object(app, "_refresh_once_with_generation", side_effect=mock_refresh):
+        tasks: list[asyncio.Task] = []
+        with patch.object(app, "_refresh_once_with_generation", new=mock_refresh):
+            for i in range(5):
+                app._refresh_generation = i
                 task = asyncio.create_task(app._schedule_refresh_async(force=True))
                 tasks.append(task)
+                # Wait until the new refresh task has actually started before issuing another force
+                while True:
+                    inflight = app._inflight
+                    if inflight is None:
+                        await asyncio.sleep(0)
+                        continue
+                    if hasattr(inflight, "is_running"):
+                        if inflight.is_running():
+                            break
+                    else:
+                        if not inflight.done():
+                            break
+                    await asyncio.sleep(0)
                 await asyncio.sleep(0.001)  # Very small delay between requests
 
         await asyncio.gather(*tasks, return_exceptions=True)
 
         # All generations should have been started (force=True)
         assert len(generations_processed) > 0
+        inflight = app._inflight
+        if inflight is not None:
+            if hasattr(inflight, "wait"):
+                await inflight.wait(suppress_cancel=True)
+            else:
+                await asyncio.gather(inflight, return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_concurrent_pause_and_refresh(self):
