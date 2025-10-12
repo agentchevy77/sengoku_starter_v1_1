@@ -106,7 +106,7 @@ class TestAsyncTaskManagement:
         app._refresh_generation = 1
 
         # Simulate old task with generation 1
-        with patch("asyncio.to_thread") as mock_thread:
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = {"panel": "old data"}
             result = await app._refresh_once_with_generation(1)
             assert result == "old data"
@@ -117,7 +117,7 @@ class TestAsyncTaskManagement:
         mock_pane.reset_mock()
 
         # Old task with stale generation should not update UI
-        with patch("asyncio.to_thread") as mock_thread:
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = {"panel": "stale data"}
             result = await app._refresh_once_with_generation(1)  # Old generation
             assert result == ""  # Empty string returned
@@ -188,14 +188,21 @@ class TestRefreshLogic:
             # Since _schedule_refresh returns early, no task is created
             mock_async.assert_not_called()
 
-    def test_force_refresh_overrides_pause(self):
+    @pytest.mark.asyncio
+    async def test_force_refresh_overrides_pause(self):
         """Test that force refresh works even when paused."""
         app = SengokuMinimalTui(Path("/tmp/profiles.yaml"), "mock")
         app._paused = True
 
-        with patch("asyncio.create_task") as mock_create_task:
+        async def quick_refresh(gen):
+            return f"data_{gen}"
+
+        with patch.object(app, "_refresh_once_with_generation", side_effect=quick_refresh):
             app._schedule_refresh(force=True)
-            mock_create_task.assert_called_once()
+            assert app._background_tasks
+            # Allow the scheduled task to run to completion
+            await asyncio.gather(*list(app._background_tasks), return_exceptions=True)
+            assert not app._background_tasks
 
     def test_action_toggle_pause(self):
         """Test pause toggle action."""
@@ -375,9 +382,14 @@ class TestConcurrentRefreshScenarios:
                 app._schedule_refresh(force=False)
                 await asyncio.sleep(0.001)
 
-        # Run both concurrently
-        with patch("asyncio.create_task"):
+        async def stub_refresh(force: bool) -> None:  # noqa: ARG001 - signature required
+            await asyncio.sleep(0)
+
+        with patch.object(app, "_schedule_refresh_async", side_effect=stub_refresh):
             await asyncio.gather(toggle_pause(), trigger_refreshes(), return_exceptions=True)
+            # Wait for any background tasks spawned during the test to settle
+            if app._background_tasks:
+                await asyncio.gather(*list(app._background_tasks), return_exceptions=True)
 
         # Should not crash or deadlock
 

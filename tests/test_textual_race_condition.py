@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -52,7 +52,7 @@ class TestRefreshRaceCondition:
 
         with (
             patch("asyncio.create_task", side_effect=track_create_task),
-            patch("optipanel.ui.service.run_tick", new_callable=AsyncMock) as mock_run_tick,
+            patch("optipanel.ui.service.run_tick", new_callable=Mock) as mock_run_tick,
         ):
             mock_run_tick.return_value = {"panel": "test_data"}
 
@@ -70,12 +70,11 @@ class TestRefreshRaceCondition:
 
             assert len(tasks_created) >= 1, "At least one task should be created"
 
-            # Clean up tasks
-            for task in tasks_created:
-                if not task.done():
-                    task.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await task
+            # Ensure tasks complete to avoid leaking coroutines
+            if tasks_created:
+                await asyncio.gather(*tasks_created, return_exceptions=True)
+            if mock_app._background_tasks:
+                await asyncio.gather(*mock_app._background_tasks, return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_orphaned_task_scenario(self, mock_app):

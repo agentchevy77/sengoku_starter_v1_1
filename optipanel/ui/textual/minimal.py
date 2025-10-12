@@ -129,6 +129,11 @@ class TaskHandle:
             except asyncio.CancelledError:
                 self._cancelled = True
                 raise
+            finally:
+                close = getattr(coro, "close", None)
+                if close is not None:
+                    with suppress(Exception):
+                        close()
 
         # Store the task reference ATOMICALLY before it can run
         # This is the key fix: the task reference exists before execution begins
