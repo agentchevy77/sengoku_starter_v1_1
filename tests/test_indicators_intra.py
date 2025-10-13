@@ -44,14 +44,15 @@ def test_rvol_ratio_behaviour():
 
 
 def test_assemble_features_from_bars_defaults_and_keys():
-    empty_bundle = assemble_features_from_bars([])
+    empty_bundle = assemble_features_from_bars([], benchmark_bars=None)
     assert empty_bundle["rvol"] == 1.0
+    assert empty_bundle["rs_strength"] == 0.0
     bars = [
         {"o": 10.0, "h": 10.5, "l": 9.8, "c": 10.1, "v": 100.0},
         {"o": 10.2, "h": 10.9, "l": 10.1, "c": 10.8, "v": 120.0},
         {"o": 10.8, "h": 11.4, "l": 10.4, "c": 11.3, "v": 160.0},
     ]
-    bundle = assemble_features_from_bars(bars, window=2)
+    bundle = assemble_features_from_bars(bars, benchmark_bars=None, window=2)
     required = {
         "last",
         "dma20",
@@ -62,10 +63,12 @@ def test_assemble_features_from_bars_defaults_and_keys():
         "obv_slope",
         "chaikin_ad",
         "clv",
+        "rs_strength",
     }
     assert required.issubset(bundle.keys())
     assert bundle["last"] == bars[-1]["c"]
     assert 0.0 <= bundle["donchian_pos"] <= 1.0
+    assert bundle["rs_strength"] == 0.0
 
 
 RECORDED_BARS = [
@@ -98,7 +101,7 @@ RECORDED_BARS = [
 
 
 def test_realistic_series_features_have_expected_profile():
-    bundle = assemble_features_from_bars(RECORDED_BARS, window=20)
+    bundle = assemble_features_from_bars(RECORDED_BARS, benchmark_bars=None, window=20)
     closes = [b["c"] for b in RECORDED_BARS[-20:]]
     highs = [b["h"] for b in RECORDED_BARS[-20:]]
     lows = [b["l"] for b in RECORDED_BARS[-20:]]
@@ -119,3 +122,55 @@ def test_realistic_series_features_have_expected_profile():
     assert bundle["rvol"] == pytest.approx(
         rvol_ratio(volumes, recent=min(20, len(volumes)), baseline=min(60, len(volumes)))
     )
+    assert bundle["rs_strength"] == 0.0
+
+
+def test_rs_strength_calculation():
+    stock_bars_outperform = [
+        {"o": 100.0, "h": 101.0, "l": 99.0, "c": 100.0, "v": 1_000.0},
+        {"o": 110.0, "h": 111.0, "l": 109.0, "c": 110.0, "v": 1_100.0},
+    ]
+    benchmark_bars_outperform = [
+        {"o": 100.0, "h": 100.5, "l": 99.5, "c": 100.0, "v": 1_000.0},
+        {"o": 105.0, "h": 105.5, "l": 104.5, "c": 105.0, "v": 1_050.0},
+    ]
+    bundle = assemble_features_from_bars(
+        stock_bars_outperform,
+        benchmark_bars=benchmark_bars_outperform,
+        window=2,
+    )
+    assert bundle["rs_strength"] == pytest.approx(0.05)
+
+    stock_bars_relatively_stronger = [
+        {"o": 100.0, "h": 101.0, "l": 99.0, "c": 100.0, "v": 1_000.0},
+        {"o": 90.0, "h": 91.0, "l": 89.0, "c": 90.0, "v": 900.0},
+    ]
+    benchmark_bars_relatively_weaker = [
+        {"o": 100.0, "h": 100.5, "l": 99.5, "c": 100.0, "v": 1_000.0},
+        {"o": 80.0, "h": 80.5, "l": 79.5, "c": 80.0, "v": 800.0},
+    ]
+    bundle = assemble_features_from_bars(
+        stock_bars_relatively_stronger,
+        benchmark_bars=benchmark_bars_relatively_weaker,
+        window=2,
+    )
+    assert bundle["rs_strength"] == pytest.approx(0.10)
+
+    stock_bars_underperform = [
+        {"o": 100.0, "h": 101.0, "l": 99.0, "c": 100.0, "v": 1_000.0},
+        {"o": 105.0, "h": 106.0, "l": 104.0, "c": 105.0, "v": 1_050.0},
+    ]
+    benchmark_bars_outperform = [
+        {"o": 100.0, "h": 101.0, "l": 99.0, "c": 100.0, "v": 1_000.0},
+        {"o": 110.0, "h": 111.0, "l": 109.0, "c": 110.0, "v": 1_100.0},
+    ]
+    bundle = assemble_features_from_bars(
+        stock_bars_underperform,
+        benchmark_bars=benchmark_bars_outperform,
+        window=2,
+    )
+    assert bundle["rs_strength"] == pytest.approx(-0.05)
+
+    # Missing benchmark data should leave the signal neutral.
+    bundle = assemble_features_from_bars(stock_bars_outperform, benchmark_bars=None, window=2)
+    assert bundle["rs_strength"] == 0.0

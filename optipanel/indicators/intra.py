@@ -128,8 +128,37 @@ def rvol_ratio(volumes: Iterable[float], recent: int = 20, baseline: int = 60) -
     return max(0.0, recent_avg / baseline_avg)
 
 
+def _calculate_relative_strength(
+    closes: Sequence[float],
+    benchmark_closes: Sequence[float],
+    window: int,
+) -> float:
+    """Calculate the performance difference between a stock and a benchmark."""
+    if not closes or not benchmark_closes or window <= 0:
+        return 0.0
+
+    lookback = min(window, len(closes), len(benchmark_closes))
+    if lookback < 2:
+        return 0.0
+
+    start_price = closes[-lookback]
+    end_price = closes[-1]
+
+    start_benchmark = benchmark_closes[-lookback]
+    end_benchmark = benchmark_closes[-1]
+
+    if start_price <= 0 or start_benchmark <= 0:
+        return 0.0
+
+    stock_perf = (end_price - start_price) / start_price
+    bench_perf = (end_benchmark - start_benchmark) / start_benchmark
+
+    return stock_perf - bench_perf
+
+
 def assemble_features_from_bars(
     bars: Sequence[dict[str, float]],
+    benchmark_bars: Sequence[dict[str, float]] | None = None,
     window: int = 20,
 ) -> dict[str, float]:
     """Assemble a feature bundle from OHLCV bars using safe defaults."""
@@ -156,6 +185,8 @@ def assemble_features_from_bars(
     opens = [float(bar["o"]) for bar in bars]
     volumes = [float(bar.get("v", 0.0)) for bar in bars]
 
+    benchmark_closes = [float(bar["c"]) for bar in benchmark_bars] if benchmark_bars else []
+
     lookback = min(window, len(bars))
     closes_win = closes[-lookback:]
     highs_win = highs[-lookback:]
@@ -165,13 +196,15 @@ def assemble_features_from_bars(
     recent_vol_window = min(20, len(volumes))
     baseline_window = min(60, len(volumes))
 
+    rs_strength = _calculate_relative_strength(closes, benchmark_closes, lookback)
+
     return {
         "last": closes[-1],
         "dma20": dma,
         "support": min(lows_win),
         "resistance": max(highs_win),
         "rvol": rvol_ratio(volumes, recent=recent_vol_window, baseline=baseline_window) if volumes else 1.0,
-        "rs_strength": 0.0,
+        "rs_strength": rs_strength,
         "vwap_diff": 0.0,
         "donchian_pos": donchian_pos(highs_win, lows_win, closes[-1]),
         "avwap_diff": 0.0,
