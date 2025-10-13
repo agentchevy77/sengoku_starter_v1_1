@@ -103,3 +103,18 @@ This section analyzes the implementation of core stock trading concepts describe
     *   **Suggestion 1 (More "Specialized Units"):** New, highly specific setups could be added to the `engine.py` playbook for nuanced market conditions, such as an "Earnings Gap Fade" or a "Low-Volatility Squeeze."
     *   **Suggestion 2 (Dynamic Weighting):** The aggregation logic in `aggregate.py` could be enhanced. Instead of static aggregation, the *weighting* of different signals could be dynamic. For example, in a high-volatility market ("bad weather"), the system could automatically give more weight to mean-reversion signals (`rejection_down`) and less to trend-following ones (`trend_long`).
     *   **Suggestion 3 (Inter-Unit Communication):** A more advanced feature would be to allow signals to directly influence each other. For example, a confirmed `breakdown_down` in a sector ETF (an "Allied Tribe" in retreat) could dramatically amplify the score of a `breakdown_down` setup for a stock within that sector. This would require the implementation of the "Allied Tribes" concept first.
+
+---
+
+## **Part 2: From Scores to Actions: The Decision Engine**
+
+*   **Analogy:** This component acts as the final command authority, translating the complex scores from the "Combined Arms" doctrine into decisive action: ATTACK (buy) or RETREAT (sell).
+
+*   **Status:** Implemented
+
+*   **Analysis:** The system uses a clear, threshold-based logic to make decisions, but importantly, it requires confirmation from multiple high-conviction signals before committing to a trade. This prevents acting on a single, potentially misleading indicator and ensures a disciplined execution of the strategy.
+
+*   **Implemented Code:**
+    *   **Decision Thresholds** (`optipanel/positions/model.py`): The `default_thresholds` function defines the explicit values required to trigger an action. For example, `entry_breakout: 80` and `entry_trend: 70`.
+    *   **Entry Logic** (`optipanel/positions/model.py`): The `_should_enter_long` function implements the entry condition. It requires a `breakout_up` score to be >= 80 **AND** a `trend_long` score to be >= 70. This is a critical design choice, demanding that a breakout be confirmed by a strong underlying trend.
+    *   **Exit Logic** (`optipanel/positions/model.py`): The `_should_exit` function handles risk management. It will trigger an exit if bearish scores appear (e.g., `breakdown_down >= 80`), or if a simple percentage-based stop-loss or take-profit is hit.
