@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 
 from optipanel.indicators.intra import (
@@ -10,43 +12,47 @@ from optipanel.indicators.intra import (
 )
 
 
+def _to_decimals(values):
+    return [Decimal(str(v)) for v in values]
+
+
 def test_donchian_and_clv_basic():
-    highs = [10.0, 11.0, 12.0]
-    lows = [8.0, 9.0, 10.0]
-    close = 11.9
-    assert 0.8 < donchian_pos(highs, lows, close) <= 1.0
-    assert clv(9.5, 12.0, 8.0, 11.8) > 0.5
+    highs = _to_decimals([10.0, 11.0, 12.0])
+    lows = _to_decimals([8.0, 9.0, 10.0])
+    close = Decimal("11.9")
+    assert Decimal("0.8") < donchian_pos(highs, lows, close) <= Decimal("1.0")
+    assert clv(Decimal("9.5"), Decimal("12.0"), Decimal("8.0"), Decimal("11.8")) > Decimal("0.5")
 
 
 def test_slopes_trend_up():
-    closes = [10.0, 10.2, 10.6, 11.1, 11.8]
-    volumes = [100, 120, 140, 160, 180]
-    highs = [c + 0.3 for c in closes]
-    lows = [c - 0.8 for c in closes]
-    assert obv_slope(closes, volumes) > 0.0
-    assert chaikin_ad_slope(highs, lows, closes, volumes) > 0.0
+    closes = _to_decimals([10.0, 10.2, 10.6, 11.1, 11.8])
+    volumes = _to_decimals([100, 120, 140, 160, 180])
+    highs = [c + Decimal("0.3") for c in closes]
+    lows = [c - Decimal("0.8") for c in closes]
+    assert obv_slope(closes, volumes) > Decimal("0.0")
+    assert chaikin_ad_slope(highs, lows, closes, volumes) > Decimal("0.0")
 
 
 def test_slopes_trend_down():
-    closes = [12.0, 11.5, 11.0, 10.6, 10.2]
-    volumes = [200, 190, 180, 170, 160]
-    highs = [c + 0.8 for c in closes]
-    lows = [c - 0.3 for c in closes]
-    assert obv_slope(closes, volumes) < 0.0
-    assert chaikin_ad_slope(highs, lows, closes, volumes) < 0.0
+    closes = _to_decimals([12.0, 11.5, 11.0, 10.6, 10.2])
+    volumes = _to_decimals([200, 190, 180, 170, 160])
+    highs = [c + Decimal("0.8") for c in closes]
+    lows = [c - Decimal("0.3") for c in closes]
+    assert obv_slope(closes, volumes) < Decimal("0.0")
+    assert chaikin_ad_slope(highs, lows, closes, volumes) < Decimal("0.0")
 
 
 def test_rvol_ratio_behaviour():
-    vols = [100.0] * 80
-    vols[-20:] = [180.0] * 20
+    vols = _to_decimals([100.0] * 80)
+    vols[-20:] = _to_decimals([180.0] * 20)
     ratio = rvol_ratio(vols, recent=20, baseline=60)
-    assert ratio > 1.0
+    assert ratio > Decimal("1.0")
 
 
 def test_assemble_features_from_bars_defaults_and_keys():
     empty_bundle = assemble_features_from_bars([], benchmark_bars=None)
-    assert empty_bundle["rvol"] == 1.0
-    assert empty_bundle["rs_strength"] == 0.0
+    assert empty_bundle["rvol"] == Decimal("1.0")
+    assert empty_bundle["rs_strength"] == Decimal("0.0")
     bars = [
         {"o": 10.0, "h": 10.5, "l": 9.8, "c": 10.1, "v": 100.0},
         {"o": 10.2, "h": 10.9, "l": 10.1, "c": 10.8, "v": 120.0},
@@ -66,9 +72,9 @@ def test_assemble_features_from_bars_defaults_and_keys():
         "rs_strength",
     }
     assert required.issubset(bundle.keys())
-    assert bundle["last"] == bars[-1]["c"]
-    assert 0.0 <= bundle["donchian_pos"] <= 1.0
-    assert bundle["rs_strength"] == 0.0
+    assert bundle["last"] == Decimal(str(bars[-1]["c"]))
+    assert Decimal("0.0") <= bundle["donchian_pos"] <= Decimal("1.0")
+    assert bundle["rs_strength"] == Decimal("0.0")
 
 
 RECORDED_BARS = [
@@ -111,18 +117,24 @@ def test_realistic_series_features_have_expected_profile():
     expected_support = min(lows)
     expected_resistance = max(highs)
 
-    assert bundle["last"] == pytest.approx(RECORDED_BARS[-1]["c"])
-    assert bundle["dma20"] == pytest.approx(expected_dma, rel=1e-6)
-    assert bundle["support"] == pytest.approx(expected_support)
-    assert bundle["resistance"] == pytest.approx(expected_resistance)
-    assert 0.0 <= bundle["donchian_pos"] <= 1.0
-    assert bundle["obv_slope"] != 0.0
-    assert bundle["chaikin_ad"] != 0.0
-    assert bundle["clv"] != 0.0
-    assert bundle["rvol"] == pytest.approx(
-        rvol_ratio(volumes, recent=min(20, len(volumes)), baseline=min(60, len(volumes)))
+    assert float(bundle["last"]) == pytest.approx(RECORDED_BARS[-1]["c"])
+    assert float(bundle["dma20"]) == pytest.approx(expected_dma, rel=1e-6)
+    assert float(bundle["support"]) == pytest.approx(expected_support)
+    assert float(bundle["resistance"]) == pytest.approx(expected_resistance)
+    assert Decimal("0.0") <= bundle["donchian_pos"] <= Decimal("1.0")
+    assert bundle["obv_slope"] != Decimal("0.0")
+    assert bundle["chaikin_ad"] != Decimal("0.0")
+    assert bundle["clv"] != Decimal("0.0")
+    assert float(bundle["rvol"]) == pytest.approx(
+        float(
+            rvol_ratio(
+                _to_decimals(volumes),
+                recent=min(20, len(volumes)),
+                baseline=min(60, len(volumes)),
+            )
+        )
     )
-    assert bundle["rs_strength"] == 0.0
+    assert bundle["rs_strength"] == Decimal("0.0")
 
 
 def test_rs_strength_calculation():
@@ -139,7 +151,7 @@ def test_rs_strength_calculation():
         benchmark_bars=benchmark_bars_outperform,
         window=2,
     )
-    assert bundle["rs_strength"] == pytest.approx(0.05)
+    assert float(bundle["rs_strength"]) == pytest.approx(0.05)
 
     stock_bars_relatively_stronger = [
         {"o": 100.0, "h": 101.0, "l": 99.0, "c": 100.0, "v": 1_000.0},
@@ -154,7 +166,7 @@ def test_rs_strength_calculation():
         benchmark_bars=benchmark_bars_relatively_weaker,
         window=2,
     )
-    assert bundle["rs_strength"] == pytest.approx(0.10)
+    assert float(bundle["rs_strength"]) == pytest.approx(0.10)
 
     stock_bars_underperform = [
         {"o": 100.0, "h": 101.0, "l": 99.0, "c": 100.0, "v": 1_000.0},
@@ -169,8 +181,8 @@ def test_rs_strength_calculation():
         benchmark_bars=benchmark_bars_outperform,
         window=2,
     )
-    assert bundle["rs_strength"] == pytest.approx(-0.05)
+    assert float(bundle["rs_strength"]) == pytest.approx(-0.05)
 
     # Missing benchmark data should leave the signal neutral.
     bundle = assemble_features_from_bars(stock_bars_outperform, benchmark_bars=None, window=2)
-    assert bundle["rs_strength"] == 0.0
+    assert bundle["rs_strength"] == Decimal("0.0")
