@@ -4,27 +4,12 @@ import pytest
 
 from optipanel.cli.main import profiles_live_cmd, profiles_live_main
 
-PROF_YAML = """
-watchlists:
-  prime: [AAA]
-  secondary: [BBB]
-budgets:
-  prime: {soft_cap: 10, cooldown: 1, used_lines: [20,5,5], scan_stride_backoff: 2}
-  secondary: {soft_cap: 100, cooldown: 1, used_lines: 1}
-ui: {width: 20, top_n: 1}
-"""
 
-FEAT_YAML = """
-AAA: {last: 105.0, dma20: 100.0, support: 101.0, resistance: 106.0, rvol: 1.6, rs_strength: 0.3, vwap_diff: 0.012}
-BBB: {last:  95.0, dma20: 100.0, support:  96.0, resistance: 100.0, rvol: 1.5, rs_strength: -0.25, vwap_diff: -0.012}
-"""
-
-
-def test_cli_profiles_live_tws_mock(tmp_path, capsys):
+def test_cli_profiles_live_tws_mock(tmp_path, capsys, example_profiles_yaml, example_features_yaml):
     prof_p = tmp_path / "profiles.yaml"
     feat_p = tmp_path / "features.yaml"
-    prof_p.write_text(PROF_YAML)
-    feat_p.write_text(FEAT_YAML)
+    prof_p.write_text(example_profiles_yaml)
+    feat_p.write_text(example_features_yaml)
 
     rc = profiles_live_main(
         ["--profiles-yaml", str(prof_p), "--provider", "tws-mock", "--features-yaml", str(feat_p), "--ticks", "3"]
@@ -37,19 +22,19 @@ def test_cli_profiles_live_tws_mock(tmp_path, capsys):
     assert isinstance(data["lists"]["prime"]["panels"], list) and len(data["lists"]["prime"]["panels"]) >= 1
 
 
-def test_profiles_live_cmd_requires_features_for_mock():
+def test_profiles_live_cmd_requires_features_for_mock(example_profiles_yaml):
     with pytest.raises(ValueError) as excinfo:
-        profiles_live_cmd(PROF_YAML, "mock", None)
+        profiles_live_cmd(example_profiles_yaml, "mock", None)
     assert "features-yaml is required" in str(excinfo.value)
 
 
-def test_profiles_live_cmd_requires_features_for_tws_mock():
+def test_profiles_live_cmd_requires_features_for_tws_mock(example_profiles_yaml):
     with pytest.raises(ValueError) as excinfo:
-        profiles_live_cmd(PROF_YAML, "tws-mock", None)
+        profiles_live_cmd(example_profiles_yaml, "tws-mock", None)
     assert "features-yaml is required" in str(excinfo.value)
 
 
-def test_profiles_live_cmd_tws_live_per_call(monkeypatch):
+def test_profiles_live_cmd_tws_live_per_call(monkeypatch, example_profiles_yaml):
     captures = []
 
     class DummyFetcher:
@@ -78,7 +63,7 @@ def test_profiles_live_cmd_tws_live_per_call(monkeypatch):
     monkeypatch.setattr("optipanel.runtime.profiles_live.run_profiles_with_provider", fake_run_profiles)
 
     profiles_live_cmd(
-        PROF_YAML,
+        example_profiles_yaml,
         "tws-live",
         None,
         ticks=1,
@@ -89,7 +74,7 @@ def test_profiles_live_cmd_tws_live_per_call(monkeypatch):
     )
 
     profiles_live_cmd(
-        PROF_YAML,
+        example_profiles_yaml,
         "tws-live",
         None,
         ticks=1,

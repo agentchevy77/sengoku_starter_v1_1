@@ -1,5 +1,3 @@
-import builtins
-
 import pytest
 
 from optipanel.cli import main as cli_main
@@ -106,6 +104,20 @@ from optipanel.cli import main as cli_main
             ["--symbols-json", "{}", "--iterations", "9"],
         ),
         (
+            ["notify", "--symbols-json", "{}", "--require-acceptance", "--ready-min", "70", "--include-supply"],
+            "notify_main",
+            [
+                "--symbols-json",
+                "{}",
+                "--iterations",
+                "2",
+                "--require-acceptance",
+                "--ready-min",
+                "70",
+                "--include-supply",
+            ],
+        ),
+        (
             [
                 "profiles-live",
                 "--profiles-yaml",
@@ -125,6 +137,14 @@ from optipanel.cli import main as cli_main
                 "",
                 "--ticks",
                 "5",
+                "--tws-host",
+                "127.0.0.1",
+                "--tws-port",
+                "7496",
+                "--client-id",
+                "107",
+                "--ref-symbol",
+                "SPY",
             ],
         ),
     ],
@@ -179,6 +199,14 @@ def test_profiles_live_forwards_feature_path(monkeypatch):
         "feats.yml",
         "--ticks",
         "2",
+        "--tws-host",
+        "10.0.0.5",
+        "--tws-port",
+        "4002",
+        "--client-id",
+        "42",
+        "--ref-symbol",
+        "QQQ",
     ]
     cli_main.main(argv)
     assert captured["args"] == [
@@ -190,4 +218,12 @@ def test_profiles_live_forwards_feature_path(monkeypatch):
         "feats.yml",
         "--ticks",
         "2",
+        "--tws-host",
+        "10.0.0.5",
+        "--tws-port",
+        "4002",
+        "--client-id",
+        "42",
+        "--ref-symbol",
+        "QQQ",
     ]

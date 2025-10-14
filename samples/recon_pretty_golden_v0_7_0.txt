@@ -1,0 +1,47 @@
+=== RECON AAPL ===
+SCOUT     recon [ 14]
+SUSTAIN   sustain= 59 fakeout= 45
+READINESS attack= 18  defense= 14
+PROB     D   
+PROB     H1  
+PROB     M15 
+SCOUT    M15 donchian:100 trend_dma:100 support_def:50 res_clear:100 rvol:50 rs:79 vwap:50
+SCOUT    H1  donchian:100 trend_dma:100 support_def:50 res_clear:100 rvol:50 rs:79 vwap:50
+SCOUT    D1  donchian:100 trend_dma:100 support_def:50 res_clear:100 rvol:50 rs:79 vwap:50
+SUPPLY   breakout_up   ⇐ res_clear_H1, donchian_H1, trend_dma_H1
+SUPPLY   trend_long    ⇐ donchian_H1, trend_dma_H1, rs_H1
+SUPPLY   bounce_up     ⇐ trend_dma_H1, rs_H1
+SUPPLY   rejection_down ⇐ res_clear_H1, donchian_H1
+SUPPLY   exhaustion    ⇐ donchian_H1, trend_dma_H1
+
+=== RECON MSFT ===
+SCOUT     recon [ 11]
+SUSTAIN   sustain= 53 fakeout= 46
+READINESS attack= 16  defense= 14
+PROB     D   
+PROB     H1  
+PROB     M15 
+SCOUT    M15 donchian:86 trend_dma:66 support_def:50 res_clear:68 rvol:50 rs:44 vwap:50
+SCOUT    H1  donchian:86 trend_dma:73 support_def:50 res_clear:57 rvol:50 rs:44 vwap:50
+SCOUT    D1  donchian:86 trend_dma:82 support_def:50 res_clear:35 rvol:50 rs:44 vwap:50
+SUPPLY   breakout_up   ⇐ donchian_H1, res_clear_M15, trend_dma_H1
+SUPPLY   trend_long    ⇐ donchian_H1, trend_dma_H1
+SUPPLY   bounce_up     ⇐ trend_dma_H1
+SUPPLY   rejection_down ⇐ donchian_H1, res_clear_M15
+SUPPLY   exhaustion    ⇐ donchian_H1
+
+=== RECON SPY ===
+SCOUT     recon [ 11]
+SUSTAIN   sustain= 56 fakeout= 47
+READINESS attack= 17  defense= 14
+PROB     D   
+PROB     H1  
+PROB     M15 
+SCOUT    M15 donchian:100 trend_dma:71 support_def:50 res_clear:100 rvol:50 rs:50 vwap:50
+SCOUT    H1  donchian:100 trend_dma:80 support_def:50 res_clear:100 rvol:50 rs:50 vwap:50
+SCOUT    D1  donchian:100 trend_dma:92 support_def:50 res_clear:100 rvol:50 rs:50 vwap:50
+SUPPLY   breakout_up   ⇐ res_clear_H1, donchian_H1, trend_dma_H1
+SUPPLY   trend_long    ⇐ donchian_H1, trend_dma_H1
+SUPPLY   bounce_up     ⇐ trend_dma_H1
+SUPPLY   rejection_down ⇐ res_clear_H1, donchian_H1
+SUPPLY   exhaustion    ⇐ donchian_H1

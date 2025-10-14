@@ -35,6 +35,7 @@ class AsyncResourceRegistry:
 
     def track_task(self, task: asyncio.Task) -> None:
         self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     def track_closer(self, obj: Any) -> None:
         self._closers.add(obj)
@@ -108,7 +109,7 @@ class PeriodicTask:
         self._stop.set()
         if self._task and not self._task.done():
             self._task.cancel()
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BaseException):
                 await self._task
         self._task = None
 

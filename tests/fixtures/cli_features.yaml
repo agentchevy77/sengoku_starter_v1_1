@@ -1,0 +1,16 @@
+AAPL:
+  last: 150
+  dma20: 148
+  support: 147
+  resistance: 152
+  rvol: 1.2
+  rs_strength: 0.3
+  vwap_diff: 0.01
+MSFT:
+  last: 410
+  dma20: 405
+  support: 400
+  resistance: 415
+  rvol: 1.1
+  rs_strength: 0.2
+  vwap_diff: -0.02

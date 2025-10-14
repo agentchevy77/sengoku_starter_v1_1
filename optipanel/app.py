@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+
+try:  # pragma: no cover - exercised only when uvloop is installed
+    import uvloop
+except Exception:  # pragma: no cover - fallback to default loop
+    pass
+else:  # pragma: no cover - trivial branch once imported
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import signal
 
 from optipanel.adapters.ibkr.sandbox import SandboxAdapter

@@ -9,16 +9,16 @@ class MockTwsFetcher:
     Shape-agnostic: can be "raw" or already-feature-shaped; the translator decides.
     """
 
-    def __init__(self, data: dict[str, dict[str, Any]] | None = None):
+    def __init__(self, data: dict[str, Any] | None = None):
         self._data = data or {}
 
-    def __call__(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
-        out: dict[str, dict[str, Any]] = {}
+    def __call__(self, symbols: list[str]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
         for s in symbols:
             if s in self._data:
                 out[s] = self._data[s]
         return out
 
     # Compatibility: if someone calls the fetcher directly for features, just return the same
-    def features_for_symbols(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+    def features_for_symbols(self, symbols: list[str]) -> dict[str, Any]:
         return self.__call__(symbols)

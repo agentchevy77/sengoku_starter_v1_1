@@ -1,0 +1,346 @@
+{
+  "ticks": [
+    {
+      "AAA": {
+        "last": 305.4,
+        "dma20": 301.2,
+        "support": 299.5,
+        "resistance": 308.1,
+        "rvol": 1.35,
+        "rs_strength": 0.22,
+        "vwap_diff": 0.008,
+        "bundles": {
+          "15m": {
+            "last": 304.8,
+            "dma20": 302.1,
+            "support": 300.0,
+            "resistance": 306.4,
+            "rvol": 1.28,
+            "rs_strength": 0.19,
+            "vwap_diff": 0.007,
+            "donchian_pos": 0.84,
+            "obv_slope": 0.52,
+            "chaikin_ad": 0.48,
+            "clv": 0.44,
+            "avwap_diff": 0.013,
+            "vwap_confluence": 0.61
+          },
+          "60m": {
+            "last": 305.1,
+            "dma20": 301.0,
+            "support": 299.8,
+            "resistance": 307.2,
+            "rvol": 1.20,
+            "rs_strength": 0.16,
+            "vwap_diff": 0.006,
+            "donchian_pos": 0.76,
+            "obv_slope": 0.46,
+            "chaikin_ad": 0.41,
+            "clv": 0.39,
+            "avwap_diff": 0.010,
+            "vwap_confluence": 0.58
+          },
+          "1d": {
+            "last": 305.4,
+            "dma20": 301.2,
+            "support": 299.5,
+            "resistance": 308.1,
+            "rvol": 1.35,
+            "rs_strength": 0.22,
+            "vwap_diff": 0.008,
+            "donchian_pos": 0.88,
+            "obv_slope": 0.60,
+            "chaikin_ad": 0.55,
+            "clv": 0.49,
+            "avwap_diff": 0.016,
+            "vwap_confluence": 0.68
+          }
+        }
+      },
+      "BBB": {
+        "last": 92.8,
+        "dma20": 96.4,
+        "support": 91.5,
+        "resistance": 97.2,
+        "rvol": 0.82,
+        "rs_strength": -0.18,
+        "vwap_diff": -0.009,
+        "bundles": {
+          "15m": {
+            "last": 92.6,
+            "dma20": 95.8,
+            "support": 91.2,
+            "resistance": 94.9,
+            "rvol": 0.78,
+            "rs_strength": -0.21,
+            "vwap_diff": -0.010,
+            "donchian_pos": 0.18,
+            "obv_slope": -0.46,
+            "chaikin_ad": -0.42,
+            "clv": -0.40,
+            "avwap_diff": -0.015,
+            "vwap_confluence": 0.35
+          },
+          "60m": {
+            "last": 92.9,
+            "dma20": 96.0,
+            "support": 91.0,
+            "resistance": 95.8,
+            "rvol": 0.85,
+            "rs_strength": -0.16,
+            "vwap_diff": -0.008,
+            "donchian_pos": 0.22,
+            "obv_slope": -0.38,
+            "chaikin_ad": -0.34,
+            "clv": -0.31,
+            "avwap_diff": -0.011,
+            "vwap_confluence": 0.38
+          },
+          "1d": {
+            "last": 92.8,
+            "dma20": 96.4,
+            "support": 91.5,
+            "resistance": 97.2,
+            "rvol": 0.82,
+            "rs_strength": -0.18,
+            "vwap_diff": -0.009,
+            "donchian_pos": 0.20,
+            "obv_slope": -0.44,
+            "chaikin_ad": -0.41,
+            "clv": -0.37,
+            "avwap_diff": -0.013,
+            "vwap_confluence": 0.36
+          }
+        }
+      }
+    },
+    {
+      "AAA": {
+        "last": 307.2,
+        "dma20": 301.8,
+        "support": 300.3,
+        "resistance": 309.2,
+        "rvol": 1.42,
+        "rs_strength": 0.24,
+        "vwap_diff": 0.009,
+        "bundles": {
+          "15m": {
+            "last": 306.6,
+            "dma20": 302.9,
+            "support": 300.6,
+            "resistance": 307.8,
+            "rvol": 1.34,
+            "rs_strength": 0.22,
+            "vwap_diff": 0.008,
+            "donchian_pos": 0.88,
+            "obv_slope": 0.58,
+            "chaikin_ad": 0.50,
+            "clv": 0.46,
+            "avwap_diff": 0.014,
+            "vwap_confluence": 0.63
+          },
+          "60m": {
+            "last": 306.3,
+            "dma20": 301.5,
+            "support": 300.1,
+            "resistance": 308.4,
+            "rvol": 1.25,
+            "rs_strength": 0.18,
+            "vwap_diff": 0.007,
+            "donchian_pos": 0.79,
+            "obv_slope": 0.49,
+            "chaikin_ad": 0.44,
+            "clv": 0.41,
+            "avwap_diff": 0.011,
+            "vwap_confluence": 0.60
+          },
+          "1d": {
+            "last": 307.2,
+            "dma20": 301.8,
+            "support": 300.3,
+            "resistance": 309.2,
+            "rvol": 1.42,
+            "rs_strength": 0.24,
+            "vwap_diff": 0.009,
+            "donchian_pos": 0.90,
+            "obv_slope": 0.63,
+            "chaikin_ad": 0.58,
+            "clv": 0.51,
+            "avwap_diff": 0.017,
+            "vwap_confluence": 0.71
+          }
+        }
+      },
+      "BBB": {
+        "last": 91.2,
+        "dma20": 96.0,
+        "support": 90.6,
+        "resistance": 96.8,
+        "rvol": 0.88,
+        "rs_strength": -0.20,
+        "vwap_diff": -0.010,
+        "bundles": {
+          "15m": {
+            "last": 90.9,
+            "dma20": 95.4,
+            "support": 90.2,
+            "resistance": 94.1,
+            "rvol": 0.82,
+            "rs_strength": -0.23,
+            "vwap_diff": -0.011,
+            "donchian_pos": 0.15,
+            "obv_slope": -0.49,
+            "chaikin_ad": -0.44,
+            "clv": -0.42,
+            "avwap_diff": -0.016,
+            "vwap_confluence": 0.33
+          },
+          "60m": {
+            "last": 91.3,
+            "dma20": 95.6,
+            "support": 90.4,
+            "resistance": 95.0,
+            "rvol": 0.87,
+            "rs_strength": -0.18,
+            "vwap_diff": -0.009,
+            "donchian_pos": 0.20,
+            "obv_slope": -0.40,
+            "chaikin_ad": -0.36,
+            "clv": -0.33,
+            "avwap_diff": -0.012,
+            "vwap_confluence": 0.36
+          },
+          "1d": {
+            "last": 91.2,
+            "dma20": 96.0,
+            "support": 90.6,
+            "resistance": 96.8,
+            "rvol": 0.88,
+            "rs_strength": -0.20,
+            "vwap_diff": -0.010,
+            "donchian_pos": 0.17,
+            "obv_slope": -0.46,
+            "chaikin_ad": -0.43,
+            "clv": -0.39,
+            "avwap_diff": -0.014,
+            "vwap_confluence": 0.34
+          }
+        }
+      }
+    },
+    {
+      "AAA": {
+        "last": 304.5,
+        "dma20": 302.4,
+        "support": 301.0,
+        "resistance": 307.9,
+        "rvol": 1.20,
+        "rs_strength": 0.18,
+        "vwap_diff": 0.006,
+        "bundles": {
+          "15m": {
+            "last": 304.0,
+            "dma20": 303.2,
+            "support": 301.5,
+            "resistance": 305.9,
+            "rvol": 1.12,
+            "rs_strength": 0.15,
+            "vwap_diff": 0.005,
+            "donchian_pos": 0.68,
+            "obv_slope": 0.44,
+            "chaikin_ad": 0.40,
+            "clv": 0.36,
+            "avwap_diff": 0.010,
+            "vwap_confluence": 0.55
+          },
+          "60m": {
+            "last": 304.3,
+            "dma20": 302.0,
+            "support": 301.2,
+            "resistance": 306.8,
+            "rvol": 1.18,
+            "rs_strength": 0.16,
+            "vwap_diff": 0.006,
+            "donchian_pos": 0.71,
+            "obv_slope": 0.48,
+            "chaikin_ad": 0.42,
+            "clv": 0.39,
+            "avwap_diff": 0.011,
+            "vwap_confluence": 0.58
+          },
+          "1d": {
+            "last": 304.5,
+            "dma20": 302.4,
+            "support": 301.0,
+            "resistance": 307.9,
+            "rvol": 1.20,
+            "rs_strength": 0.18,
+            "vwap_diff": 0.006,
+            "donchian_pos": 0.75,
+            "obv_slope": 0.52,
+            "chaikin_ad": 0.47,
+            "clv": 0.43,
+            "avwap_diff": 0.013,
+            "vwap_confluence": 0.62
+          }
+        }
+      },
+      "BBB": {
+        "last": 93.4,
+        "dma20": 95.8,
+        "support": 92.0,
+        "resistance": 96.2,
+        "rvol": 0.94,
+        "rs_strength": -0.12,
+        "vwap_diff": -0.007,
+        "bundles": {
+          "15m": {
+            "last": 93.8,
+            "dma20": 95.1,
+            "support": 92.4,
+            "resistance": 95.6,
+            "rvol": 0.90,
+            "rs_strength": -0.09,
+            "vwap_diff": -0.005,
+            "donchian_pos": 0.42,
+            "obv_slope": -0.12,
+            "chaikin_ad": -0.10,
+            "clv": -0.08,
+            "avwap_diff": -0.006,
+            "vwap_confluence": 0.45
+          },
+          "60m": {
+            "last": 93.5,
+            "dma20": 95.4,
+            "support": 92.2,
+            "resistance": 95.9,
+            "rvol": 0.92,
+            "rs_strength": -0.11,
+            "vwap_diff": -0.006,
+            "donchian_pos": 0.38,
+            "obv_slope": -0.18,
+            "chaikin_ad": -0.15,
+            "clv": -0.13,
+            "avwap_diff": -0.007,
+            "vwap_confluence": 0.42
+          },
+          "1d": {
+            "last": 93.4,
+            "dma20": 95.8,
+            "support": 92.0,
+            "resistance": 96.2,
+            "rvol": 0.94,
+            "rs_strength": -0.12,
+            "vwap_diff": -0.007,
+            "donchian_pos": 0.35,
+            "obv_slope": -0.24,
+            "chaikin_ad": -0.20,
+            "clv": -0.18,
+            "avwap_diff": -0.008,
+            "vwap_confluence": 0.40
+          }
+        }
+      }
+    }
+  ]
+}

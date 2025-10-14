@@ -12,6 +12,9 @@
 # Run all tests with coverage
 pytest
 
+# Quick fault-injection sweep for malformed bundles
+pytest -k fault -q
+
 # Run specific test file
 pytest tests/test_specific.py
 
@@ -19,11 +22,18 @@ pytest tests/test_specific.py
 pytest -m "not slow"        # Skip slow tests
 pytest -m "unit"           # Only unit tests
 pytest -m "integration"    # Only integration tests
+pytest -m slow --no-cov     # CLI smoke commands (shell out to sengoku)
 
 # Coverage report
 pytest --cov-report=html    # Generate HTML report
 open htmlcov/index.html     # View coverage report
 ```
+
+### Avoiding "Hung" Pytest Runs
+- `SENGOKU_TEST_SCOPE=full` exercises the entire regression suite (≈22 s). When invoked without verbosity, pytest buffers output and the CLI can appear stalled.
+- Prefer `SENGOKU_TEST_SCOPE=full .venv/bin/pytest -v --tb=short` (or add `PYTEST_ADDOPTS='-v --tb=short'`) so progress streams continuously.
+- If you must run via `python -m pytest`, add `-u` (`python -u -m pytest ...`) to disable stdout buffering.
+- When using harnesses with strict timeouts, streaming output prevents false positives for “hangs”.
 
 ## Test Structure
 
@@ -105,6 +115,10 @@ def sample_features():
 def test_function(sample_features):
     result = process_features(sample_features)
     assert result["AAPL"]["score"] > 50
+
+Fixtures shared across CLI smoketests live under `tests/fixtures/` (e.g.
+`cli_features.yaml`).  The slow suite (`tests/test_cli_slow.py`) reads from
+those files and invokes the real CLI processes to validate end-to-end output.
 ```
 
 ## What NOT to Test

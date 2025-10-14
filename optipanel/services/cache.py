@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import heapq
 import logging
+import os
 import time
 from typing import Any
 
@@ -9,57 +10,185 @@ logger = logging.getLogger(__name__)
 
 
 class TTLCache:
-    __slots__ = ("_store", "_ttl", "_max", "_now", "_heap", "_stats")
+    __slots__ = (
+        "_store",
+        "_ttl",
+        "_max",
+        "_now",
+        "_heap",
+        "_stats",
+        "_entry_finder",
+        "_seq",
+        "_removed_marker",
+        "_heap_compaction_factor",
+        "_heap_compaction_slack",
+        "_tombstone_warn_ratio",
+        "_tombstone_warned",
+    )
 
-    def __init__(self, max_items: int = 512, default_ttl_sec: int = 180) -> None:
+    def __init__(
+        self,
+        max_items: int = 512,
+        default_ttl_sec: int = 180,
+        heap_compaction_factor: float = 3.0,
+        heap_compaction_slack: int = 16,
+    ) -> None:
         self._store: dict[str, tuple[float, Any]] = {}
         self._ttl = default_ttl_sec
         self._max = max(0, int(max_items))
         self._now = time.monotonic
-        self._heap: list[tuple[float, str]] = []
-        self._stats: dict[str, int] = {"expired": 0, "capacity": 0}
+        self._heap: list[list[Any]] = []
+        self._stats: dict[str, float | int] = {
+            "expired": 0,
+            "capacity": 0,
+            "hits": 0,
+            "misses": 0,
+            "heap_compactions": 0,
+            "tombstone_ratio": 0.0,
+        }
+        self._entry_finder: dict[str, list[Any]] = {}
+        self._seq = 0
+        self._removed_marker: object = object()
+        self._heap_compaction_factor = max(0.0, float(heap_compaction_factor))
+        self._heap_compaction_slack = max(0, int(heap_compaction_slack))
+        env_factor = os.getenv("SENGOKU_CACHE_HEAP_FACTOR")
+        if env_factor:
+            try:
+                self._heap_compaction_factor = max(0.0, float(env_factor))
+            except ValueError:
+                logger.warning("Invalid SENGOKU_CACHE_HEAP_FACTOR value '%s'", env_factor)
+        env_slack = os.getenv("SENGOKU_CACHE_HEAP_SLACK")
+        if env_slack:
+            try:
+                self._heap_compaction_slack = max(0, int(env_slack))
+            except ValueError:
+                logger.warning("Invalid SENGOKU_CACHE_HEAP_SLACK value '%s'", env_slack)
+        self._tombstone_warn_ratio = float(os.getenv("SENGOKU_CACHE_TOMBSTONE_WARN", "0.5"))
+        self._tombstone_warned = False
+
+    # ---- internal helpers ----
+    def _next_seq(self) -> int:
+        self._seq += 1
+        return self._seq
+
+    def _push_entry(self, key: str, exp: float) -> None:
+        entry = [exp, self._next_seq(), key]
+        self._entry_finder[key] = entry
+        heapq.heappush(self._heap, entry)
+
+    def _invalidate_entry(self, key: str) -> None:
+        entry = self._entry_finder.pop(key, None)
+        if entry is not None:
+            entry[2] = self._removed_marker
+
+    def _prune_heap(self) -> None:
+        while self._heap:
+            _exp, _seq, key = self._heap[0]
+            if key is self._removed_marker:
+                heapq.heappop(self._heap)
+                continue
+            active = self._entry_finder.get(key)
+            if active is not self._heap[0]:
+                heapq.heappop(self._heap)
+                continue
+            break
+
+    def _maybe_compact_heap(self) -> None:
+        heap_size = len(self._heap)
+        if not heap_size:
+            self._stats["tombstone_ratio"] = 0.0
+            return
+
+        active = len(self._entry_finder)
+        threshold = int(active * self._heap_compaction_factor + self._heap_compaction_slack)
+        if heap_size > threshold:
+            before = heap_size
+            self._heap = [
+                entry for entry in self._heap if entry[2] is not self._removed_marker and entry[2] in self._entry_finder
+            ]
+            removed = before - len(self._heap)
+            if removed > 0:
+                self._stats["heap_compactions"] += 1
+            if self._heap:
+                heapq.heapify(self._heap)
+            heap_size = len(self._heap)
+
+        tombstones = max(0, heap_size - active)
+        ratio = (tombstones / heap_size) if heap_size else 0.0
+        self._stats["tombstone_ratio"] = ratio
+        if ratio >= self._tombstone_warn_ratio:
+            if not self._tombstone_warned:
+                logger.warning(
+                    "TTLCache tombstone ratio %.2f exceeds threshold %.2f (active=%d heap=%d)",
+                    ratio,
+                    self._tombstone_warn_ratio,
+                    active,
+                    heap_size,
+                )
+                self._tombstone_warned = True
+        else:
+            self._tombstone_warned = False
 
     def _evict_expired(self, now: float) -> int:
         removed = 0
         while self._heap:
-            exp, key = self._heap[0]
+            self._prune_heap()
+            if not self._heap:
+                break
+            exp, _seq, key = self._heap[0]
             if exp > now:
                 break
             heapq.heappop(self._heap)
             data = self._store.get(key)
             if data is None:
+                self._entry_finder.pop(key, None)
                 continue
             if data[0] <= now:
                 self._store.pop(key, None)
+                self._entry_finder.pop(key, None)
                 removed += 1
         if removed:
             self._stats["expired"] += removed
             logger.debug("TTLCache expired %d entries", removed)
+        self._maybe_compact_heap()
         return removed
 
     def _ensure_capacity(self, now: float) -> None:
         self._evict_expired(now)
         while len(self._store) >= self._max and self._heap:
-            exp, key = heapq.heappop(self._heap)
+            self._prune_heap()
+            if not self._heap:
+                break
+            exp, _seq, key = heapq.heappop(self._heap)
             data = self._store.get(key)
             if data is None:
+                self._entry_finder.pop(key, None)
                 continue
             if data[0] != exp:
-                heapq.heappush(self._heap, (data[0], key))
                 continue
             self._store.pop(key, None)
+            self._entry_finder.pop(key, None)
             self._stats["capacity"] += 1
             logger.debug("TTLCache evicted '%s' due to capacity", key)
+        self._maybe_compact_heap()
 
     def get(self, key: str) -> Any | None:
         item = self._store.get(key)
-        if not item:
+        if item is None:
+            self._stats["misses"] += 1
             return None
+
         exp, val = item
         now = self._now()
         if now > exp:
+            self._stats["misses"] += 1
+            self._stats["expired"] += 1
             self._store.pop(key, None)
+            self._invalidate_entry(key)
+            self._maybe_compact_heap()
             return None
+
+        self._stats["hits"] += 1
         return val
 
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
@@ -68,14 +197,19 @@ class TTLCache:
         exp = now + ttl
         if key in self._store:
             self._store[key] = (exp, value)
-            heapq.heappush(self._heap, (exp, key))
+            self._invalidate_entry(key)
+            self._push_entry(key, exp)
+            self._prune_heap()
+            self._maybe_compact_heap()
             return
         if self._max > 0 and len(self._store) >= self._max:
             self._ensure_capacity(now)
         if self._max == 0:
             return
         self._store[key] = (exp, value)
-        heapq.heappush(self._heap, (exp, key))
+        self._push_entry(key, exp)
+        self._prune_heap()
+        self._maybe_compact_heap()
 
     def purge_expired(self) -> int:
         now = self._now()
@@ -84,5 +218,29 @@ class TTLCache:
     def size(self) -> int:
         return len(self._store)
 
-    def stats(self) -> dict[str, int]:
-        return dict(self._stats)
+    def stats(self) -> dict[str, float | int]:
+        heap_size = len(self._heap)
+        active = len(self._entry_finder)
+        tombstones = max(0, heap_size - active)
+        self._stats["tombstone_ratio"] = (tombstones / heap_size) if heap_size else 0.0
+        out = dict(self._stats)
+        out["heap_entries"] = heap_size
+        out["active_entries"] = active
+        out["size"] = len(self._store)
+        return out
+
+    def configure_compaction(
+        self,
+        *,
+        factor: float | None = None,
+        slack: int | None = None,
+        warn_ratio: float | None = None,
+    ) -> None:
+        """Adjust heap compaction parameters at runtime."""
+
+        if factor is not None:
+            self._heap_compaction_factor = max(0.0, float(factor))
+        if slack is not None:
+            self._heap_compaction_slack = max(0, int(slack))
+        if warn_ratio is not None:
+            self._tombstone_warn_ratio = max(0.0, float(warn_ratio))

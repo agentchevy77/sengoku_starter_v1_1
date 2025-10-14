@@ -1,0 +1,21 @@
+name: nightly-smoke
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  dependency-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run dependency smoke test
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          scripts/nightly_dependency_smoke.sh
+          scripts/verify_runtime_speedups.py

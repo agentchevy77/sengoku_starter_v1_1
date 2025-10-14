@@ -4,24 +4,75 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "optipanel-sengoku"
-version = "0.1.1"
+version = "0.7.0"
 description = "Sengoku Decision Cockpit — starter scaffold (memory-safe)"
 requires-python = ">=3.11"
 dependencies = [
-    "pyyaml>=6.0.1",
+    "packaging>=25.0",
+    "pyyaml>=6.0.2",
+    "orjson>=3.10.0",
 ]
 
 [project.optional-dependencies]
 ibkr = ["ibapi>=10.19.1"]
+async = [
+    "httpx>=0.27.0",  # Async HTTP client
+    "aiofiles>=24.1.0",  # Async file I/O
+    "uvloop>=0.20.0",  # High-performance event loop
+]
+ui = [
+    "textual>=6.1.0",  # Modern TUI framework (latest stable)
+    "rich>=13.9.0",  # Rich text formatting
+    "plotext>=5.3.2,<6.0.0",  # Terminal plotting (latest available on PyPI)
+]
+web = [
+    "fastapi>=0.115.0",  # High-performance API framework
+    "uvicorn[standard]>=0.32.0",  # ASGI server
+    "websockets>=14.0",  # Real-time streaming
+    "pydantic>=2.10.0",  # Data validation
+]
+trading = [
+    "pandas>=2.2.0",  # Data analysis
+    "polars>=1.15.0",  # Columnar analytics
+    "ta-lib>=0.5.0",  # Technical indicators
+    "numba>=0.61.0",  # JIT acceleration
+]
+caching = [
+    "diskcache>=5.6.0",  # Persistent cache
+    "cachetools>=5.5.0",  # In-memory cache utilities
+]
+typing = [
+    "pyright>=1.1.390",  # Gradual typing (Microsoft)
+    "beartype>=0.19.0",  # Runtime type enforcement
+    "pydantic>=2.10.0",  # Data validation
+]
+testing = [
+    "pytest-asyncio>=0.24.0",  # Async test helpers
+    "pytest-benchmark>=5.0.0",  # Benchmarking
+    "hypothesis>=6.122.0",  # Property-based testing
+    "pytest-xdist>=3.6.0",  # Parallel test execution
+]
+profiling = [
+    "psutil>=7.0.0",  # System and process utilities (required by stress test scripts)
+    "py-spy>=0.4.0",  # Sampling profiler
+    "memray>=1.15.0",  # Memory profiler
+    "scalene>=1.5.0",  # CPU/GPU/memory profiler
+]
+docs = [
+    "mkdocs-material>=9.5.0",  # Documentation site
+    "mkdocstrings[python]>=0.27.0",  # API doc generation
+]
 dev = [
-    "pytest>=8.2.0",
-    "pytest-mock>=3.12.0",
-    "pytest-cov>=4.0.0",
-    "mypy>=1.11.1",
-    "types-PyYAML",
-    "pre-commit>=3.8.0",
-    "black>=24.8.0",
-    "ruff>=0.6.0",
+    "pytest>=8.4.2",
+    "pytest-mock>=3.15.1",
+    "pytest-cov>=7.0.0",
+    "mypy>=1.18.2",
+    "types-PyYAML>=6.0.12.20250915",
+    "pre-commit>=4.3.0",
+    "black>=25.9.0",
+    "ruff>=0.13.1",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -29,7 +80,7 @@ include = ["optipanel*"]
 exclude = ["tests*", "WORKORDERS*", "docs*", "config*"]
 
 [tool.pytest.ini_options]
-addopts = "-q --cov=optipanel --cov-report=term-missing --cov-report=html"
+addopts = "-q --cov=optipanel --cov-report=term-missing --cov-report=html --cov-fail-under=61"
 pythonpath = ["."]
 asyncio_mode = "auto"
 testpaths = ["tests"]
@@ -70,9 +121,13 @@ namespace_packages = true
 explicit_package_bases = true
 strict_equality = true
 ignore_missing_imports = false
+# Enable stricter checking for new code
+check_untyped_defs = false  # Set to true for stricter checking
+disallow_untyped_calls = false  # Set to true for stricter checking
+disallow_untyped_defs = false  # Set to true for stricter checking
 
 [[tool.mypy.overrides]]
-module = ["ibapi.*", "yaml"]
+module = ["ibapi.*", "yaml", "orjson", "uvloop"]
 ignore_missing_imports = true
 
 [tool.black]

@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import logging
+import os
 from typing import Any
+
+from optipanel.recon.enrich import enrich_alerts_with_supply_sustain
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_THRESH: dict[str, int] = {
     "score_attack": 65,
@@ -81,3 +87,65 @@ def analyze_batch(snapshots: list[dict[str, Any]], thresholds: dict[str, int] | 
     for s in snapshots:
         out.extend(gen_alerts(s, thresholds))
     return out
+
+
+def analyze_batch_with_supply(
+    snapshots: list[dict[str, Any]],
+    thresholds: dict[str, int] | None = None,
+    include_supply: bool | None = None,
+    include_readiness: bool | None = None,
+) -> list[dict[str, Any]]:
+    base = analyze_batch(snapshots, thresholds)
+    if include_supply is None:
+        include_supply = os.getenv("SENGOKU_ALERTS_INCLUDE_SUPPLY", "") == "1"
+    if include_readiness is None:
+        include_readiness = os.getenv("SENGOKU_ALERTS_INCLUDE_READINESS", "") == "1"
+    return enrich_alerts_with_supply_sustain(
+        snapshots,
+        base,
+        include_supply=include_supply,
+        include_sustain=True,
+        include_readiness=include_readiness,
+    )
+
+
+def analyze_batch_with_gate(
+    snaps,
+    thresholds=DEFAULT_THRESH,
+    *,
+    require_acceptance: bool = False,
+    ready_min: int = 65,
+    armed_floor: int = 50,
+    include_supply: bool = False,
+    include_sustain: bool = True,
+):
+    """Wrap analyze_batch to attach gate info (acceptance x readiness) and optionally filter.
+    Also preserves your existing (optional) supply/sustain enrichment path if present."""
+    alerts = list(analyze_batch(snaps, thresholds=thresholds))
+
+    try:
+        from optipanel.recon.enrich import enrich_alerts_with_supply_sustain
+
+        alerts = enrich_alerts_with_supply_sustain(
+            snaps,
+            alerts,
+            include_supply=bool(include_supply),
+            include_sustain=bool(include_sustain),
+        )
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("alerts.supply_enrichment_failed")
+
+    try:
+        from optipanel.recon.enrich import enrich_alerts_with_gate
+
+        alerts = enrich_alerts_with_gate(
+            snaps,
+            alerts,
+            require_acceptance=require_acceptance,
+            ready_min=ready_min,
+            armed_floor=armed_floor,
+        )
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("alerts.gate_enrichment_failed")
+
+    return {"alerts": alerts}

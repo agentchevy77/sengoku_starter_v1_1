@@ -21,7 +21,17 @@ def run_once(symbols_to_features: dict[str, dict[str, Any]]) -> dict[str, Any]:
     snaps = [build_symbol_snapshot(sym, feats) for sym, feats in symbols_to_features.items()]
     alerts_out = analyze_batch(snaps, DEFAULT_THRESH)
 
-    return {"scan": scan_out, "alerts": alerts_out}
+    out: dict[str, Any] = {"scan": scan_out, "alerts": alerts_out}
+
+    top_list = scan_out.get("top") if isinstance(scan_out, dict) else None
+    # Fixed: Proper bounds check for empty list
+    top_sym = top_list[0] if (top_list and len(top_list) > 0) else None
+    if top_sym:
+        features_top = symbols_to_features.get(top_sym)
+        if isinstance(features_top, dict):
+            out.setdefault("panels", {})["features_top"] = dict(features_top)
+
+    return out
 
 
 def run_once_with(provider, symbols):

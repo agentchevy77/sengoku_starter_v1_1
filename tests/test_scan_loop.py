@@ -32,7 +32,7 @@ def test_scan_two_symbols_and_summary():
     assert "top" in out and isinstance(out["top"], list) and len(out["top"]) == 2
     # Results have expected shape
     for r in out["results"]:
-        for k in ("symbol", "units", "setups", "score", "advice"):
+        for k in ("symbol", "units", "setups", "score", "advice", "battlefield_bundle", "prob_chips"):
             assert k in r
         assert 0 <= r["score"] <= 100
         assert r["advice"] in ("attack", "defend", "standby")

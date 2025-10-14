@@ -14,6 +14,11 @@ __pycache__/
 
 # Logs
 logs/
+runs/
 
 # pre-commit
 .pre-commit-cache/
+
+# Testing artifacts
+.coverage
+*_demo_*.json

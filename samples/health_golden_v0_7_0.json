@@ -1,0 +1,30 @@
+{
+  "env": {
+    "TWS_CLIENT_ID": "107",
+    "TWS_HOST": "192.168.80.1",
+    "TWS_PORT": "7496"
+  },
+  "host": "DESKTOP-MVL7PSP",
+  "ibkr": {
+    "client_id": 107,
+    "daily_cache_size": 0,
+    "host": "192.168.80.1",
+    "last_error": null,
+    "last_ok": 1758565615.037774,
+    "ok": true,
+    "pacing": {
+      "global_rate_interval_sec": 60.0,
+      "global_rate_last_wait_sec": 0.0,
+      "global_rate_max_requests": 120,
+      "global_rate_total_wait_sec": 0.0,
+      "global_rate_wait_ratio": 0.0,
+      "last_request_latency_sec": 0.0,
+      "requests_in_window": 0,
+      "total_requests": 0,
+      "window_interval_sec": 5.0
+    },
+    "port": 7496
+  },
+  "py": "3.12.3",
+  "ts": 1758565615
+}

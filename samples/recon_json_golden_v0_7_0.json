@@ -1,0 +1,275 @@
+{
+  "AAPL": {
+    "aggregate": {
+      "bounce_up": 31,
+      "breakdown_down": 48,
+      "breakout_up": 38,
+      "fakeout": 23,
+      "rejection_down": 71,
+      "trend_long": 62,
+      "trend_short": 38
+    },
+    "chips_summary": {
+      "D": {
+        "momentum": 62,
+        "position": 45,
+        "supply": 71
+      },
+      "H1": {
+        "momentum": 62,
+        "position": 45,
+        "supply": 71
+      },
+      "M15": {
+        "momentum": 62,
+        "position": 45,
+        "supply": 71
+      }
+    },
+    "mode": "prob",
+    "readiness": {
+      "attack": 18,
+      "defense": 14
+    },
+    "recon": 14,
+    "supply": {
+      "bounce_up": [
+        "trend_dma_H1",
+        "rs_H1"
+      ],
+      "breakdown_down": [],
+      "breakout_up": [
+        "res_clear_H1",
+        "donchian_H1",
+        "trend_dma_H1"
+      ],
+      "exhaustion": [
+        "donchian_H1",
+        "trend_dma_H1"
+      ],
+      "rejection_down": [
+        "res_clear_H1",
+        "donchian_H1"
+      ],
+      "trend_long": [
+        "donchian_H1",
+        "trend_dma_H1",
+        "rs_H1"
+      ],
+      "trend_short": []
+    },
+    "sustainment": {
+      "fakeout_risk": 45,
+      "sustainability": 59
+    },
+    "timeframes": {
+      "D": {
+        "bounce_up": 31,
+        "breakdown_down": 48,
+        "breakout_up": 38,
+        "fakeout": 23,
+        "rejection_down": 71,
+        "trend_long": 62,
+        "trend_short": 38
+      },
+      "H1": {
+        "bounce_up": 31,
+        "breakdown_down": 48,
+        "breakout_up": 38,
+        "fakeout": 23,
+        "rejection_down": 71,
+        "trend_long": 62,
+        "trend_short": 38
+      },
+      "M15": {
+        "bounce_up": 31,
+        "breakdown_down": 48,
+        "breakout_up": 38,
+        "fakeout": 23,
+        "rejection_down": 71,
+        "trend_long": 62,
+        "trend_short": 38
+      }
+    }
+  },
+  "MSFT": {
+    "aggregate": {
+      "bounce_up": 31,
+      "breakdown_down": 52,
+      "breakout_up": 31,
+      "fakeout": 21,
+      "rejection_down": 65,
+      "trend_long": 56,
+      "trend_short": 44
+    },
+    "chips_summary": {
+      "D": {
+        "momentum": 56,
+        "position": 39,
+        "supply": 65
+      },
+      "H1": {
+        "momentum": 56,
+        "position": 39,
+        "supply": 65
+      },
+      "M15": {
+        "momentum": 56,
+        "position": 39,
+        "supply": 65
+      }
+    },
+    "mode": "prob",
+    "readiness": {
+      "attack": 16,
+      "defense": 14
+    },
+    "recon": 11,
+    "supply": {
+      "bounce_up": [
+        "trend_dma_H1"
+      ],
+      "breakdown_down": [],
+      "breakout_up": [
+        "donchian_H1",
+        "res_clear_M15",
+        "trend_dma_H1"
+      ],
+      "exhaustion": [
+        "donchian_H1"
+      ],
+      "rejection_down": [
+        "donchian_H1",
+        "res_clear_M15"
+      ],
+      "trend_long": [
+        "donchian_H1",
+        "trend_dma_H1"
+      ],
+      "trend_short": []
+    },
+    "sustainment": {
+      "fakeout_risk": 46,
+      "sustainability": 53
+    },
+    "timeframes": {
+      "D": {
+        "bounce_up": 31,
+        "breakdown_down": 52,
+        "breakout_up": 31,
+        "fakeout": 21,
+        "rejection_down": 65,
+        "trend_long": 56,
+        "trend_short": 44
+      },
+      "H1": {
+        "bounce_up": 31,
+        "breakdown_down": 52,
+        "breakout_up": 31,
+        "fakeout": 21,
+        "rejection_down": 65,
+        "trend_long": 56,
+        "trend_short": 44
+      },
+      "M15": {
+        "bounce_up": 31,
+        "breakdown_down": 52,
+        "breakout_up": 31,
+        "fakeout": 21,
+        "rejection_down": 65,
+        "trend_long": 56,
+        "trend_short": 44
+      }
+    }
+  },
+  "SPY": {
+    "aggregate": {
+      "bounce_up": 31,
+      "breakdown_down": 51,
+      "breakout_up": 34,
+      "fakeout": 20,
+      "rejection_down": 71,
+      "trend_long": 59,
+      "trend_short": 41
+    },
+    "chips_summary": {
+      "D": {
+        "momentum": 59,
+        "position": 41,
+        "supply": 71
+      },
+      "H1": {
+        "momentum": 59,
+        "position": 41,
+        "supply": 71
+      },
+      "M15": {
+        "momentum": 59,
+        "position": 41,
+        "supply": 71
+      }
+    },
+    "mode": "prob",
+    "readiness": {
+      "attack": 17,
+      "defense": 14
+    },
+    "recon": 11,
+    "supply": {
+      "bounce_up": [
+        "trend_dma_H1"
+      ],
+      "breakdown_down": [],
+      "breakout_up": [
+        "res_clear_H1",
+        "donchian_H1",
+        "trend_dma_H1"
+      ],
+      "exhaustion": [
+        "donchian_H1"
+      ],
+      "rejection_down": [
+        "res_clear_H1",
+        "donchian_H1"
+      ],
+      "trend_long": [
+        "donchian_H1",
+        "trend_dma_H1"
+      ],
+      "trend_short": []
+    },
+    "sustainment": {
+      "fakeout_risk": 47,
+      "sustainability": 56
+    },
+    "timeframes": {
+      "D": {
+        "bounce_up": 31,
+        "breakdown_down": 51,
+        "breakout_up": 34,
+        "fakeout": 20,
+        "rejection_down": 71,
+        "trend_long": 59,
+        "trend_short": 41
+      },
+      "H1": {
+        "bounce_up": 31,
+        "breakdown_down": 51,
+        "breakout_up": 34,
+        "fakeout": 20,
+        "rejection_down": 71,
+        "trend_long": 59,
+        "trend_short": 41
+      },
+      "M15": {
+        "bounce_up": 31,
+        "breakdown_down": 51,
+        "breakout_up": 34,
+        "fakeout": 20,
+        "rejection_down": 71,
+        "trend_long": 59,
+        "trend_short": 41
+      }
+    }
+  }
+}

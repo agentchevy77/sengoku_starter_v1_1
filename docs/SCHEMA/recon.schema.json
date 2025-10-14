@@ -1,0 +1,196 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "description": "Schema for JSON emitted by `sengoku recon`.",
+  "patternProperties": {
+    "^[A-Z0-9_\\.:-]+$": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregate": {
+          "additionalProperties": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "chips_summary": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "momentum": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "position": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "supply": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "readiness": {
+          "additionalProperties": true,
+          "properties": {
+            "attack": {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "components": {
+              "additionalProperties": true,
+              "properties": {
+                "accept_bias": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "long": {
+                      "type": "integer"
+                    },
+                    "short": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                },
+                "attack_core": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "defense_core": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "fakeout_risk": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "per_tf": {
+                  "additionalProperties": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attack_tf": {
+                        "type": "number"
+                      },
+                      "defense_tf": {
+                        "type": "number"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "object"
+                },
+                "sustainability": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "attack_core",
+                "defense_core",
+                "sustainability",
+                "fakeout_risk"
+              ],
+              "type": "object"
+            },
+            "defense": {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "attack",
+            "defense",
+            "components"
+          ],
+          "type": "object"
+        },
+        "recon": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "supply": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": "Optional narrative explaining drivers per front unit.",
+          "type": "object"
+        },
+        "sustainment": {
+          "additionalProperties": true,
+          "properties": {
+            "fakeout_risk": {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sustainability": {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "sustainability",
+            "fakeout_risk"
+          ],
+          "type": "object"
+        },
+        "tf_scout": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "description": "Optional microchip lens when --mode micro is used.",
+          "type": "object"
+        },
+        "timeframes": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "description": "Per-timeframe probability chips (D/H1/M15).",
+          "type": "object"
+        }
+      },
+      "required": [
+        "recon",
+        "aggregate",
+        "timeframes",
+        "sustainment",
+        "readiness"
+      ],
+      "type": "object"
+    }
+  },
+  "title": "Sengoku Recon Response",
+  "type": "object"
+}

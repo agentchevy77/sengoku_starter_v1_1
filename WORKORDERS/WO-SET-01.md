@@ -1,5 +1,7 @@
 # WO-SET-01 — Core Setups scoring engine (pure functions)
 
+**Status: COMPLETE**
+
 **Allowed paths (modify only these):**
 - `optipanel/setups/__init__.py`
 - `optipanel/setups/engine.py`
@@ -17,3 +19,5 @@
 - `pytest -q` passes.
 - Only Allowed paths were changed.
 - Pure functions only; no I/O or network; no new deps.
+
+**Primary test:** `pytest tests/test_setups.py -q`

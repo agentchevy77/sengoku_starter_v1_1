@@ -29,11 +29,16 @@ def run_profiles_offline(
         panels: list[str] = []
         last_advice_counts = None
         top_last: list[str] = []
+        last_prob_chips: dict[str, Any] = {}
         for t in drv.get("ticks", []):
             if t.get("scanned") and t.get("run"):
                 panels.append(render_command_room(t["run"], width=width, top_n=top_n))
                 last_advice_counts = t["run"]["scan"].get("advice_counts", last_advice_counts)
                 top_last = t["run"]["scan"].get("top", top_last)
+                for snap in t["run"].get("scan", {}).get("results", []):
+                    chips = snap.get("prob_chips")
+                    if chips:
+                        last_prob_chips[snap.get("symbol", "?")] = chips
 
         lists_out[name] = {
             "scanned_count": drv.get("scanned_count", 0),
@@ -41,6 +46,7 @@ def run_profiles_offline(
             "panels": panels,
             "advice_counts_last": last_advice_counts or {"attack": 0, "defend": 0, "standby": 0},
             "top_last": top_last,
+            "prob_chips_last": last_prob_chips,
         }
 
     return {"lists": lists_out, "ticks": int(ticks)}
