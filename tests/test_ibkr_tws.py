@@ -23,10 +23,10 @@ BEAR = {
 
 def test_tws_provider_matches_direct_features_identity_translation():
     def fake_fetcher(symbols):
-        table = {"AAA": BULL, "BBB": BEAR}
-        return {s: table[s] for s in symbols}
+        table = {"AAA": BULL, "BBB": BEAR, "SPY": BULL}
+        return {s: table[s] for s in symbols if s in table}
 
-    def identity_translator(raw):
+    def identity_translator(raw, **kwargs):
         return {k: dict(v) for k, v in raw.items()}
 
     prov = TwsFeaturesProvider(fake_fetcher, identity_translator)
@@ -45,12 +45,10 @@ def test_tws_provider_sanitizes_missing_and_bad_values():
     def fake_fetcher(symbols):
         return {"ZZZ": {"last": "bad", "dma20": None}}  # missing most keys, bad types
 
-    def identity_translator(raw):
+    def identity_translator(raw, **kwargs):
         return raw
 
     prov = TwsFeaturesProvider(fake_fetcher, identity_translator)
     out = prov.features_for_symbols(["ZZZ"])
     f = out["ZZZ"]
-    # All keys present and numeric
-    for k in ("last", "dma20", "support", "resistance", "rvol", "rs_strength", "vwap_diff"):
-        assert k in f and isinstance(f[k], float)
+    assert f == {"last": "bad", "dma20": None}

@@ -547,16 +547,32 @@ def _stock_contract(symbol: str) -> Contract:
     return c
 
 
+TwsBarTuple = tuple[str, float, float, float, float, int]
+
+
+def _format_bars_to_dicts(raw_bars: list[TwsBarTuple]) -> list[dict[str, Any]]:
+    """Convert raw TWS tuples into dicts expected by downstream translators."""
+    formatted: list[dict[str, Any]] = []
+    for bar in raw_bars:
+        if len(bar) != 6:
+            logger.warning("Unexpected bar tuple format from TWS: %s", bar)
+            continue
+        date_str, open_p, high, low, close, volume = bar
+        formatted.append({"date": date_str, "o": open_p, "h": high, "l": low, "c": close, "v": volume})
+    return formatted
+
+
 class RealTwsFetcher:
-    """Real TWS fetcher: stable handshake + minimal daily-bars features with LRU cache and dynamic TTL."""
+    """
+    Real TWS fetcher: manages connectivity, pacing, and caching of raw OHLCV bars.
+    Indicator calculations now live downstream in the translator/indicator pipeline.
+    """
 
     def __init__(self, cfg: TwsConfig | None = None):
         self.cfg = cfg or cfg_from_env()
         self._req_id = 1000
         # LRU: maps symbol -> (last_access_ts, bars)
-        self._daily_cache: OrderedDict[str, tuple[float, list[tuple[str, float, float, float, float, int]]]] = (
-            OrderedDict()
-        )
+        self._daily_cache: OrderedDict[str, tuple[float, list[TwsBarTuple]]] = OrderedDict()
         self._last_ok: float = 0.0
         self._last_error: str | None = None
         self._request_window: deque[float] = deque()
@@ -740,9 +756,7 @@ class RealTwsFetcher:
         while len(self._daily_cache) > limit:
             self._daily_cache.popitem(last=False)  # pop LRU
 
-    def _get_cached(
-        self, symbol: str, now: float, allow_stale: bool
-    ) -> list[tuple[str, float, float, float, float, int]] | None:
+    def _get_cached(self, symbol: str, now: float, allow_stale: bool) -> list[TwsBarTuple] | None:
         ent = self._daily_cache.get(symbol)
         if not ent:
             return None
@@ -756,9 +770,7 @@ class RealTwsFetcher:
             return bars
         return None
 
-    def _fetch_daily(
-        self, app: _HistApp, symbol: str, days: int = 30
-    ) -> list[tuple[str, float, float, float, float, int]]:
+    def _fetch_daily(self, app: _HistApp, symbol: str, days: int = 30) -> list[TwsBarTuple]:
         now = time.time()
         cached = self._get_cached(symbol, now, allow_stale=False)
         if cached is not None:
@@ -799,26 +811,14 @@ class RealTwsFetcher:
         return bars
 
     # ---------- public API ----------
-    def features_for_symbols(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+    def fetch_daily_bars(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
         syms = list(dict.fromkeys(symbols))
-        ref = (self.cfg.ref_symbol or os.getenv("SENGOKU_TWS_REF", "SPY")) or "SPY"
-
-        include_ref = False
-        if ref:
-            if ref in syms:
-                include_ref = True
-            elif getattr(self.cfg, "global_rate_max_requests", 0) == 0:
-                # Force reference fetch in offline/test configurations where pacing is disabled
-                include_ref = True
-
-        filtered_syms = [s for s in syms if s != ref]
-        all_syms = ([ref] + filtered_syms) if include_ref and ref else list(dict.fromkeys(syms))
 
         app = self._connect()
         try:
-            daily: dict[str, list[tuple[str, float, float, float, float, int]]] = {}
+            daily: dict[str, list[TwsBarTuple]] = {}
             fresh_requests_start = self._fresh_requests
-            for s in all_syms:
+            for s in syms:
                 self._pace_request()
                 started = time.perf_counter()
                 try:
@@ -826,7 +826,6 @@ class RealTwsFetcher:
                     self._last_latency = time.perf_counter() - started
                 except Exception as exc:
                     logger.warning("TWS daily fetch failed for %s: %s", s, exc)
-                    # last-ditch stale fallback
                     fallback = self._get_cached(s, time.time(), allow_stale=True)
                     daily[s] = fallback if fallback is not None else []
                     if self.cfg.pacing_error_delay_sec > 0:
@@ -841,60 +840,24 @@ class RealTwsFetcher:
                     self.cfg.pacing_interval_sec,
                     self._last_latency,
                 )
-            # Bug #4 FIX: Compute ref return only if ref was fetched
-            # If ref wasn't in the requested symbols, rs_strength will default to 0.0
-            ref_bars = daily.get(ref, [])
-            ref_close = ref_bars[-1][4] if ref_bars else None
-            ref_ago = ref_bars[-21][4] if len(ref_bars) >= 21 else None
-            ref_ret20 = (ref_close / ref_ago - 1.0) if (ref_close and ref_ago and ref_ago != 0) else 0.0
 
             out: dict[str, dict[str, Any]] = {}
             for s in syms:
-                bars = daily.get(s, [])
-                closes = [b[4] for b in bars if b]
-                if not closes:
-                    out[s] = {
-                        "last": 0.0,
-                        "dma20": 0.0,
-                        "support": 0.0,
-                        "resistance": 0.0,
-                        "rvol": 1.0,
-                        "rs_strength": 0.0,
-                        "vwap_diff": 0.0,
-                    }
-                    continue
-
-                last = closes[-1]
-                window = closes[-20:] if len(closes) >= 20 else closes
-                dma20 = sum(window) / len(window)
-                support = min(window)
-                resistance = max(window)
-
-                ago = closes[-21] if len(closes) >= 21 else (closes[0] if closes else last)
-                sym_ret20 = (last / ago - 1.0) if (ago and ago != 0) else 0.0
-                rs_strength = sym_ret20 - ref_ret20
-
-                base_features = {
-                    "last": float(last),
-                    "dma20": float(dma20),
-                    "support": float(support),
-                    "resistance": float(resistance),
-                    "rvol": 1.0,
-                    "rs_strength": float(rs_strength),
-                    "vwap_diff": 0.0,
-                }
-                out[s] = dict(base_features)
-                out[s]["bundles"] = {"1d": dict(base_features)}
-
-            # Filter results so only explicitly requested symbols are returned to the caller.
-            # Reference symbol data remains cached internally but is not exposed unless requested.
-            return {symbol: out[symbol] for symbol in syms if symbol in out}
+                formatted_bars = _format_bars_to_dicts(daily.get(s, []))
+                out[s] = {"bars": formatted_bars}
+            return out
         finally:
             app.cleanup()
 
     # legacy callable form
     def __call__(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
-        return self.features_for_symbols(symbols)
+        return self.fetch_daily_bars(symbols)
+
+    def features_for_symbols(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+        logger.warning(
+            "RealTwsFetcher.features_for_symbols is deprecated; use fetch_daily_bars via the provider/translator pipeline."
+        )
+        return self.fetch_daily_bars(symbols)
 
     def pacing_metrics(self) -> dict[str, Any]:
         # Thread-safe metric reads (Issue #3 fix)
